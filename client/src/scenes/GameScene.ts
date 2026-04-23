@@ -27,6 +27,8 @@ interface MonsterStateMsg {
   template: string;
   x: number;
   y: number;
+  hp: number;
+  maxHp: number;
 }
 
 interface PortalDef {
@@ -44,7 +46,9 @@ interface PortalDef {
 export class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private attackKey!: Phaser.Input.Keyboard.Key;
   private myLabel!: Phaser.GameObjects.Text;
+  private facing: 'left' | 'right' = 'right';
   private network = new WebSocketClient(SERVER_URL);
   private lastMoveSentAt = 0;
   private myId = -1;
@@ -92,6 +96,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setDeadzone(200, 120);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
+    this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     this.loadMap(this.currentMapId);
     this.setupNetwork();
@@ -165,6 +170,9 @@ export class GameScene extends Phaser.Scene {
     this.network.on('PLAYER_LEAVE', (p) => this.onPlayerLeave(p));
     this.network.on('MAP_CHANGED', (p) => this.onMapChanged(p));
     this.network.on('MONSTER_MOVE', (p) => this.onMonsterMove(p));
+    this.network.on('MONSTER_DAMAGED', (p) => this.onMonsterDamaged(p));
+    this.network.on('MONSTER_DIED', (p) => this.onMonsterDied(p));
+    this.network.on('MONSTER_SPAWN', (p) => this.onMonsterSpawn(p));
     this.network.on('ERROR', (p) => console.warn('[Server ERROR]', p.message));
     this.network.onOpen(() => {
       this.network.send({ type: 'JOIN', name: this.playerName });
@@ -238,14 +246,30 @@ export class GameScene extends Phaser.Scene {
 
   private spawnMonster(ms: MonsterStateMsg): void {
     if (this.monsters.has(ms.id)) return;
-    this.monsters.set(ms.id, new MonsterSprite(this, ms.id, ms.x, ms.y));
+    this.monsters.set(ms.id, new MonsterSprite(this, ms.id, ms.x, ms.y, ms.hp, ms.maxHp));
   }
 
   private onMonsterMove(p: Packet): void {
+    this.monsters.get(p.id as number)?.setTarget(p.x as number, p.vx as number);
+  }
+
+  private onMonsterDamaged(p: Packet): void {
+    const m = this.monsters.get(p.id as number);
+    if (!m) return;
+    m.applyDamage(p.hp as number, this, p.dmg as number);
+  }
+
+  private onMonsterDied(p: Packet): void {
     const id = p.id as number;
     const m = this.monsters.get(id);
     if (!m) return;
-    m.setTarget(p.x as number, p.vx as number);
+    m.destroy();
+    this.monsters.delete(id);
+  }
+
+  private onMonsterSpawn(p: Packet): void {
+    const monster = p.monster as MonsterStateMsg;
+    this.spawnMonster(monster);
   }
 
   override update(time: number, delta: number): void {
@@ -253,10 +277,20 @@ export class GameScene extends Phaser.Scene {
 
     if (this.cursors.left.isDown) {
       this.player.setVelocityX(-MOVE_SPEED);
+      this.facing = 'left';
+      this.player.setFlipX(true);
     } else if (this.cursors.right.isDown) {
       this.player.setVelocityX(MOVE_SPEED);
+      this.facing = 'right';
+      this.player.setFlipX(false);
     } else {
       this.player.setVelocityX(0);
+    }
+
+    // 공격 (Space)
+    if (Phaser.Input.Keyboard.JustDown(this.attackKey) && this.network.isOpen) {
+      this.network.send({ type: 'ATTACK', dir: this.facing });
+      this.spawnAttackEffect();
     }
 
     // 점프
@@ -302,6 +336,20 @@ export class GameScene extends Phaser.Scene {
       if (Phaser.Geom.Rectangle.Overlaps(this.portals[i].zone.getBounds(), playerRect)) return i;
     }
     return -1;
+  }
+
+  private spawnAttackEffect(): void {
+    const offsetX = this.facing === 'right' ? 28 : -28;
+    const slash = this.add
+      .rectangle(this.player.x + offsetX, this.player.y, 40, 20, 0xffffff, 0.7)
+      .setStrokeStyle(2, 0xffeb8a);
+    this.tweens.add({
+      targets: slash,
+      alpha: 0,
+      scaleX: 1.3,
+      duration: 160,
+      onComplete: () => slash.destroy()
+    });
   }
 
   private generatePlayerName(): string {

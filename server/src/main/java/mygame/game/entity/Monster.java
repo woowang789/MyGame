@@ -17,13 +17,16 @@ public final class Monster {
     private final double groundY;
     private final double speed;
 
+    private final int maxHp;
     private double x;
     private double vx;
+    private int hp;
     private MonsterState state;
 
     public Monster(int id, String template,
                    double spawnX, double groundY,
-                   double minX, double maxX, double speed) {
+                   double minX, double maxX, double speed,
+                   int maxHp) {
         this.id = id;
         this.template = template;
         this.x = spawnX;
@@ -31,6 +34,8 @@ public final class Monster {
         this.minX = minX;
         this.maxX = maxX;
         this.speed = speed;
+        this.maxHp = maxHp;
+        this.hp = maxHp;
     }
 
     public int id() { return id; }
@@ -42,9 +47,19 @@ public final class Monster {
     public double maxX() { return maxX; }
     public double speed() { return speed; }
     public MonsterState state() { return state; }
+    public int hp() { return hp; }
+    public int maxHp() { return maxHp; }
+    public boolean isDead() { return hp <= 0; }
 
     public void setX(double x) { this.x = x; }
     public void setVx(double vx) { this.vx = vx; }
+
+    /** 데미지 적용. 사망 여부는 {@link #isDead()} 로 확인. */
+    public int applyDamage(int dmg) {
+        int applied = Math.max(0, Math.min(hp, dmg));
+        hp -= applied;
+        return applied;
+    }
 
     public void transitionTo(MonsterState next) {
         this.state = next;

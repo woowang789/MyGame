@@ -24,6 +24,8 @@ public final class Player {
     private volatile double y;
     private volatile double vx;
     private volatile double vy;
+    /** "left" / "right" — 마지막 수평 이동 방향. 공격 박스 방향 계산에 쓰인다. */
+    private volatile String facing = "right";
 
     public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
         this.id = id;
@@ -42,12 +44,15 @@ public final class Player {
     public double y() { return y; }
     public double vx() { return vx; }
     public double vy() { return vy; }
+    public String facing() { return facing; }
 
     public void updatePosition(double x, double y, double vx, double vy) {
         this.x = x;
         this.y = y;
         this.vx = vx;
         this.vy = vy;
+        if (vx > 0.5) this.facing = "right";
+        else if (vx < -0.5) this.facing = "left";
     }
 
     public void moveTo(String mapId, double x, double y) {

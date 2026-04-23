@@ -13,7 +13,11 @@ import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
+import mygame.game.SpawnPoint;
+import mygame.network.packets.Packets.AttackRequest;
 import mygame.network.packets.Packets.MapChangedPacket;
+import mygame.network.packets.Packets.MonsterDamagedPacket;
+import mygame.network.packets.Packets.MonsterDiedPacket;
 import mygame.network.packets.Packets.MonsterState;
 import mygame.network.packets.Packets.MoveRequest;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
@@ -60,6 +64,7 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("JOIN", this::handleJoin);
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
+        dispatcher.register("ATTACK", this::handleAttack);
     }
 
     @Override
@@ -190,6 +195,48 @@ public final class GameServer extends WebSocketServer {
     }
 
     private static MonsterState toMonsterState(Monster m) {
-        return new MonsterState(m.id(), m.template(), m.x(), m.y());
+        return new MonsterState(m.id(), m.template(), m.x(), m.y(), m.hp(), m.maxHp());
+    }
+
+    // --- 공격 ---
+
+    private static final double ATTACK_RANGE_X = 70;
+    // 플레이어 중심 기준으로 상/하 모두 검사하여 서 있는 몬스터도 충분히 포함.
+    private static final double ATTACK_RANGE_Y_UP = 60;
+    private static final double ATTACK_RANGE_Y_DOWN = 60;
+    private static final int PLAYER_DAMAGE = 25;
+
+    private void handleAttack(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "join required"));
+            return;
+        }
+        AttackRequest req = ctx.json().treeToValue(ctx.body(), AttackRequest.class);
+        GameMap map = world.map(player.mapId());
+        if (map == null) return;
+
+        String dir = (req.dir() == null || req.dir().isBlank()) ? player.facing() : req.dir();
+        double px = player.x();
+        double py = player.y();
+        double hitMinX = dir.equals("left") ? px - ATTACK_RANGE_X : px;
+        double hitMaxX = dir.equals("left") ? px : px + ATTACK_RANGE_X;
+        double hitMinY = py - ATTACK_RANGE_Y_UP;
+        double hitMaxY = py + ATTACK_RANGE_Y_DOWN;
+
+        for (Monster m : map.monsters()) {
+            if (m.isDead()) continue;
+            if (m.x() < hitMinX || m.x() > hitMaxX) continue;
+            if (m.y() < hitMinY || m.y() > hitMaxY) continue;
+
+            int dmg = m.applyDamage(PLAYER_DAMAGE);
+            map.broadcast("MONSTER_DAMAGED",
+                    new MonsterDamagedPacket(m.id(), dmg, m.hp(), player.id()));
+            if (m.isDead()) {
+                SpawnPoint origin = map.findSpawnFor(m);
+                map.killMonster(m, origin);
+                map.broadcast("MONSTER_DIED", new MonsterDiedPacket(m.id()));
+            }
+        }
     }
 }

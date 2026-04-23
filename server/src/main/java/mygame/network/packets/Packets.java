@@ -58,8 +58,20 @@ public final class Packets {
     ) {}
 
     /** 몬스터의 공개 상태. 스폰/스냅샷 시 클라이언트에게 전달된다. */
-    public record MonsterState(int id, String template, double x, double y) {}
+    public record MonsterState(int id, String template, double x, double y, int hp, int maxHp) {}
 
     /** 몬스터 이동 브로드캐스트. 저빈도 송신(상태 변경 시 + 주기적 샘플). */
     public record MonsterMovedPacket(int id, double x, double vx) {}
+
+    /** 공격 요청. 대상은 서버가 플레이어 공격 박스로 판정. */
+    public record AttackRequest(String dir) {}
+
+    /** 몬스터가 피격당했음을 알리는 브로드캐스트. */
+    public record MonsterDamagedPacket(int id, int dmg, int hp, int attackerId) {}
+
+    /** 몬스터 사망 브로드캐스트. 클라이언트는 스프라이트 제거. */
+    public record MonsterDiedPacket(int id) {}
+
+    /** 새 몬스터 스폰(리스폰 등). */
+    public record MonsterSpawnedPacket(MonsterState monster) {}
 }
