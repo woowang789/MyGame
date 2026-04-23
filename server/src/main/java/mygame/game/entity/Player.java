@@ -19,6 +19,8 @@ public final class Player {
     private final int id;
     private final String name;
     private final WebSocket connection;
+    /** DB primary key. 세션 ID 와 별개로 영속 식별자. */
+    private volatile long dbId = -1;
 
     private volatile String mapId;
     private volatile double x;
@@ -43,6 +45,8 @@ public final class Player {
     public int id() { return id; }
     public String name() { return name; }
     public WebSocket connection() { return connection; }
+    public long dbId() { return dbId; }
+    public void setDbId(long dbId) { this.dbId = dbId; }
     public String mapId() { return mapId; }
     public double x() { return x; }
     public double y() { return y; }
@@ -59,6 +63,12 @@ public final class Player {
     }
 
     /** EXP 획득. 반환값은 이 호출로 달성한 레벨 상승 횟수(0 이상). */
+    /** DB 에서 복원할 때 사용. 신규 플레이어는 level=1, exp=0 으로 그대로. */
+    public void restoreProgress(int level, int exp) {
+        this.level = level;
+        this.exp = exp;
+    }
+
     public int gainExp(int amount) {
         if (amount <= 0) return 0;
         int levelUps = 0;

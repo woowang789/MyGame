@@ -19,6 +19,10 @@ import mygame.game.event.GameEvent.LeveledUp;
 import mygame.game.event.GameEvent.MonsterKilled;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
+import mygame.db.Database;
+import mygame.db.JdbcPlayerRepository;
+import mygame.db.PlayerRepository;
+import mygame.db.PlayerRepository.PlayerData;
 import mygame.game.SpawnPoint;
 import mygame.game.item.DroppedItem;
 import mygame.network.packets.Packets.AttackRequest;
@@ -65,6 +69,8 @@ public final class GameServer extends WebSocketServer {
     private final EventBus eventBus = new EventBus();
     @SuppressWarnings("unused") // 생성 시 EventBus 에 자기 자신을 등록하므로 참조 유지만 하면 충분
     private final ProgressionSystem progression = new ProgressionSystem(eventBus);
+    private final Database database;
+    private final PlayerRepository playerRepo;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
@@ -73,6 +79,13 @@ public final class GameServer extends WebSocketServer {
     public GameServer(int port) {
         super(new InetSocketAddress(port));
         setReuseAddr(true);
+        // ~/mygame-data/mygame DB (파일 기반, 재시작 후 영속)
+        String home = System.getProperty("user.home");
+        this.database = new Database(
+                "jdbc:h2:file:" + home + "/mygame-data/mygame;AUTO_SERVER=TRUE",
+                "sa", "");
+        this.database.runMigrations();
+        this.playerRepo = new JdbcPlayerRepository(database);
         registerHandlers();
     }
 
@@ -129,6 +142,20 @@ public final class GameServer extends WebSocketServer {
             map.broadcast("PLAYER_LEAVE", new PlayerLeftPacket(player.id()));
         }
         world.unregisterPlayer(player);
+
+        // DB 저장. 실패해도 연결 종료는 계속 진행.
+        if (player.dbId() > 0) {
+            try {
+                playerRepo.save(
+                        player.dbId(),
+                        player.level(),
+                        player.exp(),
+                        player.inventory().snapshot());
+                log.info("플레이어 저장: name={}, lv={}, exp={}", player.name(), player.level(), player.exp());
+            } catch (Exception e) {
+                log.error("플레이어 저장 실패: name={}", player.name(), e);
+            }
+        }
     }
 
     @Override
@@ -164,8 +191,20 @@ public final class GameServer extends WebSocketServer {
         int id = playerIdSeq.getAndIncrement();
         String name = (req.name() == null || req.name().isBlank()) ? ("Player" + id) : req.name();
 
+        // 중복 접속 방지: 이미 같은 이름이 붙어 있으면 거부
+        if (world.playerByName(name) != null) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "이미 접속 중인 이름입니다: " + name));
+            return;
+        }
+
         GameMap map = world.defaultMap();
         Player player = new Player(id, name, ctx.conn(), map.id(), map.spawnX(), map.spawnY());
+
+        // DB 에서 로드하거나 없으면 신규 생성. 레벨/EXP/인벤토리 복원.
+        PlayerData data = playerRepo.findByName(name).orElseGet(() -> playerRepo.create(name));
+        player.setDbId(data.id());
+        player.restoreProgress(data.level(), data.exp());
+        data.items().forEach(player.inventory()::add);
 
         sessionPlayers.put(ctx.conn(), player);
         map.addPlayer(player);
@@ -180,6 +219,12 @@ public final class GameServer extends WebSocketServer {
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
         map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
+
+        // 복원된 진행도/인벤토리를 당사자에게 별도 전달
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "PLAYER_EXP",
+                new ExpUpdatedPacket(player.exp(), player.level(), player.expToNextLevel(), 0)));
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
+                new InventoryPacket(player.inventory().snapshot())));
     }
 
     private void handleMove(PacketContext ctx) throws Exception {

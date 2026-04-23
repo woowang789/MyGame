@@ -26,6 +26,9 @@ dependencies {
     // 로깅
     implementation("org.slf4j:slf4j-simple:2.0.13")
 
+    // 내장 DB (파일 기반 H2)
+    implementation("com.h2database:h2:2.2.224")
+
     // 테스트 (향후 Phase에서 사용)
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
