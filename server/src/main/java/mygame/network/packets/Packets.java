@@ -74,4 +74,10 @@ public final class Packets {
 
     /** 새 몬스터 스폰(리스폰 등). */
     public record MonsterSpawnedPacket(MonsterState monster) {}
+
+    /** EXP 획득/현재 상태 알림. 수신자(본인)에게만 전송. */
+    public record ExpUpdatedPacket(int exp, int level, int toNextLevel, int gained) {}
+
+    /** 레벨업 알림. 본인 + 주변에 이펙트용으로 브로드캐스트. */
+    public record LevelUpPacket(int playerId, int level) {}
 }

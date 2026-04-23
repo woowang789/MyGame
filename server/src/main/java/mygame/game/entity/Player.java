@@ -26,6 +26,8 @@ public final class Player {
     private volatile double vy;
     /** "left" / "right" — 마지막 수평 이동 방향. 공격 박스 방향 계산에 쓰인다. */
     private volatile String facing = "right";
+    private volatile int level = 1;
+    private volatile int exp = 0;
 
     public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
         this.id = id;
@@ -45,6 +47,26 @@ public final class Player {
     public double vx() { return vx; }
     public double vy() { return vy; }
     public String facing() { return facing; }
+    public int level() { return level; }
+    public int exp() { return exp; }
+
+    /** 현 레벨 기준 다음 레벨까지 필요한 누적 EXP. 간단 선형식. */
+    public int expToNextLevel() {
+        return 50 * level;
+    }
+
+    /** EXP 획득. 반환값은 이 호출로 달성한 레벨 상승 횟수(0 이상). */
+    public int gainExp(int amount) {
+        if (amount <= 0) return 0;
+        int levelUps = 0;
+        exp += amount;
+        while (exp >= expToNextLevel()) {
+            exp -= expToNextLevel();
+            level++;
+            levelUps++;
+        }
+        return levelUps;
+    }
 
     public void updatePosition(double x, double y, double vx, double vy) {
         this.x = x;

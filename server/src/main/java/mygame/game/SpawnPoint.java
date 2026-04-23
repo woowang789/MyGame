@@ -16,6 +16,7 @@ public record SpawnPoint(
         double maxX,
         double speed,
         int maxHp,
+        int expReward,
         long respawnDelayMs
 ) {
 

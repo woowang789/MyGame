@@ -8,13 +8,21 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import mygame.game.GameLoop;
 import mygame.game.GameMap;
+import mygame.game.ProgressionSystem;
 import mygame.game.World;
 import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
+import mygame.game.event.EventBus;
+import mygame.game.event.GameEvent;
+import mygame.game.event.GameEvent.ExpGained;
+import mygame.game.event.GameEvent.LeveledUp;
+import mygame.game.event.GameEvent.MonsterKilled;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
 import mygame.game.SpawnPoint;
 import mygame.network.packets.Packets.AttackRequest;
+import mygame.network.packets.Packets.ExpUpdatedPacket;
+import mygame.network.packets.Packets.LevelUpPacket;
 import mygame.network.packets.Packets.MapChangedPacket;
 import mygame.network.packets.Packets.MonsterDamagedPacket;
 import mygame.network.packets.Packets.MonsterDiedPacket;
@@ -49,6 +57,9 @@ public final class GameServer extends WebSocketServer {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final World world = new World(json);
     private final GameLoop gameLoop = new GameLoop(world);
+    private final EventBus eventBus = new EventBus();
+    @SuppressWarnings("unused") // 생성 시 EventBus 에 자기 자신을 등록하므로 참조 유지만 하면 충분
+    private final ProgressionSystem progression = new ProgressionSystem(eventBus);
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
@@ -65,6 +76,32 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
         dispatcher.register("ATTACK", this::handleAttack);
+
+        // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
+        // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
+        eventBus.subscribe(this::broadcastProgression);
+    }
+
+    private void broadcastProgression(GameEvent event) {
+        switch (event) {
+            case ExpGained e -> {
+                Player p = e.player();
+                p.connection().send(PacketEnvelope.wrap(json, "PLAYER_EXP",
+                        new ExpUpdatedPacket(p.exp(), p.level(), p.expToNextLevel(), e.gained())));
+            }
+            case LeveledUp e -> {
+                Player p = e.player();
+                // 본인 + 같은 맵 플레이어에게 이펙트용 알림
+                GameMap map = world.map(p.mapId());
+                if (map != null) {
+                    map.broadcast("PLAYER_LEVELUP", new LevelUpPacket(p.id(), e.newLevel()));
+                }
+                // EXP 바 동기화(가산 0 으로 리셋된 상태 전달)
+                p.connection().send(PacketEnvelope.wrap(json, "PLAYER_EXP",
+                        new ExpUpdatedPacket(p.exp(), p.level(), p.expToNextLevel(), 0)));
+            }
+            default -> {}
+        }
     }
 
     @Override
@@ -236,6 +273,8 @@ public final class GameServer extends WebSocketServer {
                 SpawnPoint origin = map.findSpawnFor(m);
                 map.killMonster(m, origin);
                 map.broadcast("MONSTER_DIED", new MonsterDiedPacket(m.id()));
+                int expReward = origin != null ? origin.expReward() : 0;
+                eventBus.publish(new MonsterKilled(player, m, expReward));
             }
         }
     }

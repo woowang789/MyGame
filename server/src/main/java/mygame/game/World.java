@@ -13,6 +13,7 @@ public final class World {
 
     private static final double GROUND_Y = 544;
     private static final int SNAIL_HP = 50;
+    private static final int SNAIL_EXP = 15;
     private static final long SNAIL_RESPAWN_MS = 5000;
 
     private final Map<String, GameMap> maps = new ConcurrentHashMap<>();
@@ -33,7 +34,8 @@ public final class World {
         for (int i = 1; i <= count; i++) {
             double spawnX = minX + step * i;
             map.registerSpawn(new SpawnPoint(
-                    "snail", spawnX, GROUND_Y, minX, maxX, speed, SNAIL_HP, SNAIL_RESPAWN_MS
+                    "snail", spawnX, GROUND_Y, minX, maxX, speed,
+                    SNAIL_HP, SNAIL_EXP, SNAIL_RESPAWN_MS
             ));
         }
     }

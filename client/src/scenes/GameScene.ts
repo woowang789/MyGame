@@ -49,6 +49,8 @@ export class GameScene extends Phaser.Scene {
   private attackKey!: Phaser.Input.Keyboard.Key;
   private myLabel!: Phaser.GameObjects.Text;
   private facing: 'left' | 'right' = 'right';
+  private statusLabel!: Phaser.GameObjects.Text;
+  private expBarFill!: Phaser.GameObjects.Rectangle;
   private network = new WebSocketClient(SERVER_URL);
   private lastMoveSentAt = 0;
   private myId = -1;
@@ -97,6 +99,8 @@ export class GameScene extends Phaser.Scene {
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    this.createHud();
 
     this.loadMap(this.currentMapId);
     this.setupNetwork();
@@ -173,6 +177,8 @@ export class GameScene extends Phaser.Scene {
     this.network.on('MONSTER_DAMAGED', (p) => this.onMonsterDamaged(p));
     this.network.on('MONSTER_DIED', (p) => this.onMonsterDied(p));
     this.network.on('MONSTER_SPAWN', (p) => this.onMonsterSpawn(p));
+    this.network.on('PLAYER_EXP', (p) => this.onPlayerExp(p));
+    this.network.on('PLAYER_LEVELUP', (p) => this.onPlayerLevelUp(p));
     this.network.on('ERROR', (p) => console.warn('[Server ERROR]', p.message));
     this.network.onOpen(() => {
       this.network.send({ type: 'JOIN', name: this.playerName });
@@ -336,6 +342,74 @@ export class GameScene extends Phaser.Scene {
       if (Phaser.Geom.Rectangle.Overlaps(this.portals[i].zone.getBounds(), playerRect)) return i;
     }
     return -1;
+  }
+
+  private createHud(): void {
+    // 화면 좌상단 고정 HUD (카메라 스크롤 영향 X)
+    this.statusLabel = this.add
+      .text(12, 12, 'Lv 1  EXP 0 / 50', {
+        fontSize: '13px',
+        color: '#ffeb8a',
+        fontStyle: 'bold'
+      })
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.add
+      .rectangle(12, 34, 180, 8, 0x000000, 0.6)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.expBarFill = this.add
+      .rectangle(12, 34, 0, 8, 0xffc64a)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(1001);
+  }
+
+  private onPlayerExp(p: Packet): void {
+    const level = p.level as number;
+    const exp = p.exp as number;
+    const toNext = p.toNextLevel as number;
+    const gained = p.gained as number;
+    this.statusLabel.setText(`Lv ${level}  EXP ${exp} / ${toNext}`);
+    this.expBarFill.displayWidth = 180 * Math.max(0, Math.min(1, exp / toNext));
+    if (gained > 0) {
+      const txt = this.add
+        .text(this.player.x, this.player.y - 36, `+${gained} EXP`, {
+          fontSize: '12px',
+          color: '#aee1ff'
+        })
+        .setOrigin(0.5, 1);
+      this.tweens.add({
+        targets: txt,
+        y: txt.y - 24,
+        alpha: 0,
+        duration: 800,
+        onComplete: () => txt.destroy()
+      });
+    }
+  }
+
+  private onPlayerLevelUp(p: Packet): void {
+    const level = p.level as number;
+    const id = p.playerId as number;
+    const x = id === this.myId ? this.player.x : this.remotes.get(id)?.sprite.x ?? this.player.x;
+    const y = id === this.myId ? this.player.y : this.remotes.get(id)?.sprite.y ?? this.player.y;
+    const txt = this.add
+      .text(x, y - 50, `LEVEL UP! Lv ${level}`, {
+        fontSize: '18px',
+        color: '#ffd700',
+        fontStyle: 'bold'
+      })
+      .setOrigin(0.5, 1)
+      .setStroke('#6b3200', 3);
+    this.tweens.add({
+      targets: txt,
+      y: txt.y - 40,
+      alpha: 0,
+      duration: 1400,
+      onComplete: () => txt.destroy()
+    });
   }
 
   private spawnAttackEffect(): void {
