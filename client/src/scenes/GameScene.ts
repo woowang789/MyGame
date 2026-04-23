@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SERVER_URL } from '../config';
+import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import { WebSocketClient, type Packet } from '../network/WebSocketClient';
 
@@ -17,6 +18,13 @@ const MAPS = ['henesys', 'ellinia'] as const;
 interface PlayerStateMsg {
   id: number;
   name: string;
+  x: number;
+  y: number;
+}
+
+interface MonsterStateMsg {
+  id: number;
+  template: string;
   x: number;
   y: number;
 }
@@ -42,6 +50,7 @@ export class GameScene extends Phaser.Scene {
   private myId = -1;
   private readonly playerName = this.generatePlayerName();
   private readonly remotes = new Map<number, RemotePlayer>();
+  private readonly monsters = new Map<number, MonsterSprite>();
 
   private currentMapId = 'henesys';
   private tilemap: Phaser.Tilemaps.Tilemap | null = null;
@@ -60,6 +69,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.generateTilesetTexture();
     this.generatePlayerTexture();
+    // 몬스터 텍스처는 MonsterSprite 가 관리.
+    MonsterSprite.generateTexture(this);
   }
 
   create(): void {
@@ -153,6 +164,7 @@ export class GameScene extends Phaser.Scene {
     this.network.on('PLAYER_MOVE', (p) => this.onPlayerMove(p));
     this.network.on('PLAYER_LEAVE', (p) => this.onPlayerLeave(p));
     this.network.on('MAP_CHANGED', (p) => this.onMapChanged(p));
+    this.network.on('MONSTER_MOVE', (p) => this.onMonsterMove(p));
     this.network.on('ERROR', (p) => console.warn('[Server ERROR]', p.message));
     this.network.onOpen(() => {
       this.network.send({ type: 'JOIN', name: this.playerName });
@@ -166,6 +178,8 @@ export class GameScene extends Phaser.Scene {
     this.player.setPosition(self.x, self.y);
     const others = (p.others ?? []) as PlayerStateMsg[];
     for (const o of others) this.spawnRemote(o);
+    const ms = (p.monsters ?? []) as MonsterStateMsg[];
+    for (const m of ms) this.spawnMonster(m);
   }
 
   private onPlayerJoin(p: Packet): void {
@@ -195,9 +209,11 @@ export class GameScene extends Phaser.Scene {
     const others = (p.others ?? []) as PlayerStateMsg[];
     console.log(`[Game] 맵 전환: ${mapId} (${x},${y}), 기존 플레이어 ${others.length}명`);
 
-    // 모든 원격 플레이어 제거 후 새 맵의 목록으로 교체
+    // 원격 플레이어·몬스터 모두 제거 후 새 맵 스냅샷으로 교체
     for (const r of this.remotes.values()) r.destroy();
     this.remotes.clear();
+    for (const m of this.monsters.values()) m.destroy();
+    this.monsters.clear();
 
     this.currentMapId = mapId;
     this.loadMap(mapId);
@@ -205,6 +221,8 @@ export class GameScene extends Phaser.Scene {
     this.player.setPosition(x, y);
 
     for (const o of others) this.spawnRemote(o);
+    const ms = (p.monsters ?? []) as MonsterStateMsg[];
+    for (const m of ms) this.spawnMonster(m);
     // 도착 지점이 복귀 포털과 겹칠 수 있으므로, 방금 전환했다면 현재 겹친 포털을
     // "이미 활성"으로 간주해 즉시 재발동하지 않도록 한다.
     this.activePortalIndex = this.findOverlappingPortalIndex();
@@ -216,6 +234,18 @@ export class GameScene extends Phaser.Scene {
       ps.id,
       new RemotePlayer(this, ps.id, ps.name, ps.x, ps.y, PLAYER_TEXTURE)
     );
+  }
+
+  private spawnMonster(ms: MonsterStateMsg): void {
+    if (this.monsters.has(ms.id)) return;
+    this.monsters.set(ms.id, new MonsterSprite(this, ms.id, ms.x, ms.y));
+  }
+
+  private onMonsterMove(p: Packet): void {
+    const id = p.id as number;
+    const m = this.monsters.get(id);
+    if (!m) return;
+    m.setTarget(p.x as number, p.vx as number);
   }
 
   override update(time: number, delta: number): void {
@@ -250,6 +280,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const r of this.remotes.values()) r.update(delta);
+    for (const m of this.monsters.values()) m.update(delta);
 
     if (time - this.lastMoveSentAt >= MOVE_PACKET_INTERVAL_MS) {
       this.lastMoveSentAt = time;

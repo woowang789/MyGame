@@ -24,8 +24,13 @@ public final class Packets {
 
     // S→C
 
-    /** 접속 완료 응답. 자기 자신의 정보와 맵에 이미 있던 다른 플레이어 목록을 준다. */
-    public record WelcomePacket(int playerId, PlayerState self, java.util.List<PlayerState> others) {}
+    /** 접속 완료 응답. 자기 자신의 정보와 맵에 이미 있던 다른 플레이어 · 몬스터 목록을 준다. */
+    public record WelcomePacket(
+            int playerId,
+            PlayerState self,
+            java.util.List<PlayerState> others,
+            java.util.List<MonsterState> monsters
+    ) {}
 
     /** 다른 플레이어가 맵에 들어왔음을 알리는 브로드캐스트. */
     public record PlayerJoinedPacket(PlayerState player) {}
@@ -46,5 +51,15 @@ public final class Packets {
      * 맵 전환 성공 응답. 수신자에게 새 맵 정보와 해당 맵의 현재 다른 플레이어 목록을 준다.
      * WELCOME 과 유사하지만 playerId 는 이미 알고 있으므로 포함하지 않는다.
      */
-    public record MapChangedPacket(String mapId, double x, double y, java.util.List<PlayerState> others) {}
+    public record MapChangedPacket(
+            String mapId, double x, double y,
+            java.util.List<PlayerState> others,
+            java.util.List<MonsterState> monsters
+    ) {}
+
+    /** 몬스터의 공개 상태. 스폰/스냅샷 시 클라이언트에게 전달된다. */
+    public record MonsterState(int id, String template, double x, double y) {}
+
+    /** 몬스터 이동 브로드캐스트. 저빈도 송신(상태 변경 시 + 주기적 샘플). */
+    public record MonsterMovedPacket(int id, double x, double vx) {}
 }

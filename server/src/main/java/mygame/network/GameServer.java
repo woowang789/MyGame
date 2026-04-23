@@ -6,12 +6,15 @@ import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import mygame.game.GameLoop;
 import mygame.game.GameMap;
 import mygame.game.World;
+import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
 import mygame.network.packets.Packets.MapChangedPacket;
+import mygame.network.packets.Packets.MonsterState;
 import mygame.network.packets.Packets.MoveRequest;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
 import mygame.network.packets.Packets.PlayerLeftPacket;
@@ -41,6 +44,7 @@ public final class GameServer extends WebSocketServer {
     private final ObjectMapper json = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final World world = new World(json);
+    private final GameLoop gameLoop = new GameLoop(world);
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
@@ -96,6 +100,7 @@ public final class GameServer extends WebSocketServer {
     public void onStart() {
         log.info("WebSocket 서버 리스닝 시작.");
         setConnectionLostTimeout(60);
+        gameLoop.start();
     }
 
     // --- 핸들러 ---
@@ -118,7 +123,8 @@ public final class GameServer extends WebSocketServer {
         WelcomePacket welcome = new WelcomePacket(
                 id,
                 player.toState(),
-                map.othersOf(id).stream().map(Player::toState).toList()
+                map.othersOf(id).stream().map(Player::toState).toList(),
+                map.monsters().stream().map(GameServer::toMonsterState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
         map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
@@ -174,11 +180,16 @@ public final class GameServer extends WebSocketServer {
                 target.id(),
                 player.x(),
                 player.y(),
-                target.othersOf(player.id()).stream().map(Player::toState).toList()
+                target.othersOf(player.id()).stream().map(Player::toState).toList(),
+                target.monsters().stream().map(GameServer::toMonsterState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MAP_CHANGED", resp));
 
         // 4) 새 맵 기존 사용자에게 입장 알림
         target.broadcastExcept(player.id(), "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
+    }
+
+    private static MonsterState toMonsterState(Monster m) {
+        return new MonsterState(m.id(), m.template(), m.x(), m.y());
     }
 }
