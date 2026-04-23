@@ -1,15 +1,16 @@
 /**
  * 서버와의 WebSocket 통신을 캡슐화한다.
  *
- * Phase A 에서는 단순 송수신만 지원한다. 이후 Phase 에서 재연결,
- * 패킷 타입별 핸들러 라우팅 등으로 확장된다.
+ * 단순 송수신 + 패킷 타입별 핸들러 라우팅. 재연결/버퍼링은 추후 Phase 에서.
  */
 export type Packet = { type: string } & Record<string, unknown>;
 export type PacketHandler = (packet: Packet) => void;
+type OpenHandler = () => void;
 
 export class WebSocketClient {
   private socket: WebSocket | null = null;
   private readonly handlers = new Map<string, PacketHandler>();
+  private readonly openHandlers: OpenHandler[] = [];
 
   constructor(private readonly url: string) {}
 
@@ -19,14 +20,18 @@ export class WebSocketClient {
 
     ws.addEventListener('open', () => {
       console.log('[WS] 연결됨:', this.url);
+      for (const h of this.openHandlers) h();
     });
 
     ws.addEventListener('message', (event) => {
       try {
         const packet = JSON.parse(event.data as string) as Packet;
-        console.log('[WS] 수신:', packet);
         const handler = this.handlers.get(packet.type);
-        handler?.(packet);
+        if (handler) {
+          handler(packet);
+        } else {
+          console.log('[WS] 미처리 패킷:', packet);
+        }
       } catch (err) {
         console.warn('[WS] 메시지 파싱 실패:', err);
       }
@@ -45,9 +50,12 @@ export class WebSocketClient {
     this.handlers.set(type, handler);
   }
 
+  onOpen(handler: OpenHandler): void {
+    this.openHandlers.push(handler);
+  }
+
   send(packet: Packet): void {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      // 연결 확립 전 호출은 조용히 버려지면 디버깅이 어려워진다.
       console.warn(`[WS] 연결 미확립 상태에서 send 호출됨 (type=${packet.type})`);
       return;
     }
