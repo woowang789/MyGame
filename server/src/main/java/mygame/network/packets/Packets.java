@@ -94,4 +94,10 @@ public final class Packets {
 
     /** 플레이어 인벤토리 전체 스냅샷(단순화: 증분 대신 풀 싱크). */
     public record InventoryPacket(java.util.Map<String, Integer> items) {}
+
+    /** 채팅 요청. scope="ALL"(맵 전체) 또는 "WHISPER"(target 이름 지정). */
+    public record ChatRequest(String scope, String target, String message) {}
+
+    /** 채팅 수신 브로드캐스트/개별 전달. */
+    public record ChatMessage(String scope, String sender, String message) {}
 }

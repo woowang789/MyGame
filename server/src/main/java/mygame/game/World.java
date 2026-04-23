@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import mygame.game.entity.Player;
 import mygame.game.item.DropTable;
 import mygame.game.item.DropTable.Entry;
 
@@ -28,6 +29,8 @@ public final class World {
     private final Map<String, GameMap> maps = new ConcurrentHashMap<>();
     private final AtomicInteger monsterIdSeq = new AtomicInteger(1);
     private final AtomicInteger itemIdSeq = new AtomicInteger(1);
+    /** 전역 플레이어 이름 → Player. 귓속말(맵 경계 넘는 메시지) 라우팅에 사용. */
+    private final Map<String, Player> playersByName = new ConcurrentHashMap<>();
 
     public World(ObjectMapper json) {
         GameMap henesys = new GameMap("henesys", 80, 100, json, monsterIdSeq::getAndIncrement);
@@ -55,4 +58,8 @@ public final class World {
     public GameMap map(String id) { return maps.get(id); }
     public GameMap defaultMap() { return maps.get("henesys"); }
     public Collection<GameMap> maps() { return maps.values(); }
+
+    public void registerPlayer(Player p) { playersByName.put(p.name(), p); }
+    public void unregisterPlayer(Player p) { playersByName.remove(p.name(), p); }
+    public Player playerByName(String name) { return playersByName.get(name); }
 }

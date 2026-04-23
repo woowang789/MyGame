@@ -22,6 +22,8 @@ import mygame.network.packets.Packets.JoinRequest;
 import mygame.game.SpawnPoint;
 import mygame.game.item.DroppedItem;
 import mygame.network.packets.Packets.AttackRequest;
+import mygame.network.packets.Packets.ChatMessage;
+import mygame.network.packets.Packets.ChatRequest;
 import mygame.network.packets.Packets.DroppedItemState;
 import mygame.network.packets.Packets.InventoryPacket;
 import mygame.network.packets.Packets.ExpUpdatedPacket;
@@ -80,6 +82,7 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
         dispatcher.register("ATTACK", this::handleAttack);
         dispatcher.register("PICKUP", this::handlePickup);
+        dispatcher.register("CHAT", this::handleChat);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -125,6 +128,7 @@ public final class GameServer extends WebSocketServer {
             map.removePlayer(player.id());
             map.broadcast("PLAYER_LEAVE", new PlayerLeftPacket(player.id()));
         }
+        world.unregisterPlayer(player);
     }
 
     @Override
@@ -165,6 +169,7 @@ public final class GameServer extends WebSocketServer {
 
         sessionPlayers.put(ctx.conn(), player);
         map.addPlayer(player);
+        world.registerPlayer(player);
 
         WelcomePacket welcome = new WelcomePacket(
                 id,
@@ -247,6 +252,43 @@ public final class GameServer extends WebSocketServer {
 
     private static final long DROP_TTL_MS = 60_000;
     private static final double PICKUP_RANGE = 40;
+
+    private static final int MAX_CHAT_LEN = 200;
+
+    private void handleChat(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        ChatRequest req = ctx.json().treeToValue(ctx.body(), ChatRequest.class);
+        if (req.message() == null || req.message().isBlank()) return;
+
+        String msg = req.message();
+        if (msg.length() > MAX_CHAT_LEN) msg = msg.substring(0, MAX_CHAT_LEN);
+
+        String scope = req.scope() == null ? "ALL" : req.scope();
+        switch (scope) {
+            case "ALL" -> {
+                GameMap map = world.map(player.mapId());
+                if (map != null) {
+                    map.broadcast("CHAT", new ChatMessage("ALL", player.name(), msg));
+                }
+            }
+            case "WHISPER" -> {
+                Player target = world.playerByName(req.target());
+                if (target == null) {
+                    ctx.conn().send(PacketEnvelope.error(ctx.json(), "no such player: " + req.target()));
+                    return;
+                }
+                // 보낸 사람·받는 사람 모두에게 같은 메시지를 echo 해 로컬 UI 가 구성되도록 한다.
+                String payload = PacketEnvelope.wrap(ctx.json(), "CHAT",
+                        new ChatMessage("WHISPER:" + target.name(), player.name(), msg));
+                ctx.conn().send(payload);
+                if (target.id() != player.id() && target.connection().isOpen()) {
+                    target.connection().send(payload);
+                }
+            }
+            default -> ctx.conn().send(PacketEnvelope.error(ctx.json(), "unknown scope"));
+        }
+    }
 
     private void handlePickup(PacketContext ctx) {
         Player player = ctx.player();

@@ -112,6 +112,7 @@ export class GameScene extends Phaser.Scene {
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     this.createHud();
+    this.setupChatInput();
 
     this.loadMap(this.currentMapId);
     this.setupNetwork();
@@ -193,7 +194,11 @@ export class GameScene extends Phaser.Scene {
     this.network.on('ITEM_DROPPED', (p) => this.onItemDropped(p));
     this.network.on('ITEM_REMOVED', (p) => this.onItemRemoved(p));
     this.network.on('INVENTORY', (p) => this.onInventory(p));
-    this.network.on('ERROR', (p) => console.warn('[Server ERROR]', p.message));
+    this.network.on('CHAT', (p) => this.onChat(p));
+    this.network.on('ERROR', (p) => {
+      console.warn('[Server ERROR]', p.message);
+      this.appendChatLog('sys', `[오류] ${p.message}`);
+    });
     this.network.onOpen(() => {
       this.network.send({ type: 'JOIN', name: this.playerName });
     });
@@ -483,6 +488,78 @@ export class GameScene extends Phaser.Scene {
       duration: 1400,
       onComplete: () => txt.destroy()
     });
+  }
+
+  private setupChatInput(): void {
+    const input = document.getElementById('chat-input') as HTMLInputElement | null;
+    if (!input) return;
+
+    // 게임 중 Enter → 입력창 포커스. 입력창에서 Enter → 전송.
+    // 입력 중에는 Phaser 가 키를 가로채지 않도록 disableGlobalCapture 사용.
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && document.activeElement !== input) {
+        e.preventDefault();
+        input.focus();
+      }
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        input.blur();
+        input.value = '';
+      } else if (e.key === 'Enter') {
+        const text = input.value.trim();
+        input.value = '';
+        input.blur();
+        if (!text) return;
+        this.sendChat(text);
+      }
+    });
+
+    // 입력창 포커스 중에는 방향키·Space 이벤트가 Phaser 로 가지 않게 차단.
+    input.addEventListener('focus', () => this.input.keyboard?.disableGlobalCapture());
+    input.addEventListener('blur', () => this.input.keyboard?.enableGlobalCapture());
+  }
+
+  private sendChat(text: string): void {
+    if (!this.network.isOpen) return;
+    if (text.startsWith('/w ') || text.startsWith('/귓 ')) {
+      const rest = text.slice(text.indexOf(' ') + 1).trim();
+      const sp = rest.indexOf(' ');
+      if (sp < 0) {
+        this.appendChatLog('sys', '사용법: /w 닉네임 메시지');
+        return;
+      }
+      const target = rest.slice(0, sp);
+      const message = rest.slice(sp + 1);
+      this.network.send({ type: 'CHAT', scope: 'WHISPER', target, message });
+    } else {
+      this.network.send({ type: 'CHAT', scope: 'ALL', target: '', message: text });
+    }
+  }
+
+  private onChat(p: Packet): void {
+    const scope = p.scope as string;
+    const sender = p.sender as string;
+    const msg = p.message as string;
+    if (scope.startsWith('WHISPER:')) {
+      const partner = scope.slice('WHISPER:'.length);
+      this.appendChatLog('whisper', `[귓] ${sender} → ${partner}: ${msg}`);
+    } else {
+      this.appendChatLog('all', `${sender}: ${msg}`);
+    }
+  }
+
+  private appendChatLog(kind: 'sys' | 'all' | 'whisper', line: string): void {
+    const log = document.getElementById('chat-log');
+    if (!log) return;
+    const div = document.createElement('div');
+    div.className = kind;
+    div.textContent = line;
+    log.appendChild(div);
+    // 최근 80줄만 유지
+    while (log.children.length > 80) log.removeChild(log.firstChild!);
+    log.scrollTop = log.scrollHeight;
   }
 
   private spawnAttackEffect(): void {

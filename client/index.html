@@ -26,11 +26,50 @@
         opacity: 0.85;
         pointer-events: none;
       }
+      #chat-box {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 16px;
+        width: 520px;
+        max-width: 90vw;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      #chat-log {
+        height: 120px;
+        overflow-y: auto;
+        font-size: 12px;
+        line-height: 1.5;
+        margin-bottom: 6px;
+      }
+      #chat-log .sys { color: #9fdcff; }
+      #chat-log .whisper { color: #ffb4ff; }
+      #chat-log .all { color: #ffffff; }
+      #chat-input {
+        width: 100%;
+        box-sizing: border-box;
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        padding: 6px 8px;
+        font-size: 13px;
+        outline: none;
+      }
+      #chat-input:focus { border-color: #ffeb8a; }
     </style>
   </head>
   <body>
-    <div id="hud">방향키로 이동 · WebSocket 상태는 콘솔 확인</div>
+    <div id="hud">방향키 이동 · Space 공격 · Enter 채팅 · /w 이름 내용 = 귓속말</div>
     <div id="game-root"></div>
+    <div id="chat-box">
+      <div id="chat-log"></div>
+      <input id="chat-input" type="text" placeholder="Enter 키로 채팅 시작, /w 닉네임 메시지 로 귓속말" maxlength="200" />
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
