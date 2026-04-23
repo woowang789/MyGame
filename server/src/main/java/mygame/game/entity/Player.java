@@ -19,15 +19,17 @@ public final class Player {
     private final String name;
     private final WebSocket connection;
 
+    private volatile String mapId;
     private volatile double x;
     private volatile double y;
     private volatile double vx;
     private volatile double vy;
 
-    public Player(int id, String name, WebSocket connection, double spawnX, double spawnY) {
+    public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
         this.id = id;
         this.name = name;
         this.connection = connection;
+        this.mapId = mapId;
         this.x = spawnX;
         this.y = spawnY;
     }
@@ -35,6 +37,7 @@ public final class Player {
     public int id() { return id; }
     public String name() { return name; }
     public WebSocket connection() { return connection; }
+    public String mapId() { return mapId; }
     public double x() { return x; }
     public double y() { return y; }
     public double vx() { return vx; }
@@ -45,6 +48,14 @@ public final class Player {
         this.y = y;
         this.vx = vx;
         this.vy = vy;
+    }
+
+    public void moveTo(String mapId, double x, double y) {
+        this.mapId = mapId;
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
     }
 
     public PlayerState toState() {

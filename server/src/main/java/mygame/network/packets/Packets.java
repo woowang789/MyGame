@@ -38,4 +38,13 @@ public final class Packets {
 
     /** 플레이어의 공개 상태(신규 접속자에게 현재 스냅샷을 줄 때 사용). */
     public record PlayerState(int id, String name, double x, double y) {}
+
+    /** 클라이언트가 포털을 통해 다른 맵으로 가기를 요청. 목적지 좌표는 포털 정의에서 받는다. */
+    public record ChangeMapRequest(String targetMap, double targetX, double targetY) {}
+
+    /**
+     * 맵 전환 성공 응답. 수신자에게 새 맵 정보와 해당 맵의 현재 다른 플레이어 목록을 준다.
+     * WELCOME 과 유사하지만 playerId 는 이미 알고 있으므로 포함하지 않는다.
+     */
+    public record MapChangedPacket(String mapId, double x, double y, java.util.List<PlayerState> others) {}
 }

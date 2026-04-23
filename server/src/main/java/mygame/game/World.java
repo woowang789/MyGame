@@ -15,8 +15,10 @@ public final class World {
     private final Map<String, GameMap> maps = new ConcurrentHashMap<>();
 
     public World(ObjectMapper json) {
-        // Phase B 의 henesys.json 과 맞춘 스폰 위치.
+        // Phase B 의 타일맵 JSON 과 맞춘 기본 스폰 위치.
+        // 실제 포털 진입 시 스폰 좌표는 포털 정의의 targetX/Y 를 사용한다.
         maps.put("henesys", new GameMap("henesys", 80, 100, json));
+        maps.put("ellinia", new GameMap("ellinia", 80, 480, json));
     }
 
     public GameMap map(String id) {

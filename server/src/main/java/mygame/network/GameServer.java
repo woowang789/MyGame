@@ -9,7 +9,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import mygame.game.GameMap;
 import mygame.game.World;
 import mygame.game.entity.Player;
+import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
+import mygame.network.packets.Packets.MapChangedPacket;
 import mygame.network.packets.Packets.MoveRequest;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
 import mygame.network.packets.Packets.PlayerLeftPacket;
@@ -22,16 +24,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Phase C — 멀티플레이어 위치 동기화 서버.
+ * Phase D — 다중 맵 + 포털 전환.
  *
- * <p>프로토콜:
+ * <p>프로토콜 변경점(vs Phase C):
  * <ul>
- *   <li>C→S {@code JOIN {name}}  : 입장. 서버가 Player 를 생성해 기본 맵에 배치.
- *   <li>S→C {@code WELCOME}      : 자신의 정보와 이미 맵에 있던 타 플레이어 목록.
- *   <li>S→C {@code PLAYER_JOIN}  : 다른 플레이어의 입장 알림.
- *   <li>C→S {@code MOVE}         : 내 위치 갱신.
- *   <li>S→C {@code PLAYER_MOVE}  : 타인 이동 브로드캐스트(본인 제외).
- *   <li>S→C {@code PLAYER_LEAVE} : 퇴장 알림.
+ *   <li>플레이어는 반드시 특정 맵에 소속된다. 이동/브로드캐스트는 그 맵 내부에서만 발생.
+ *   <li>{@code CHANGE_MAP} 요청 시 현재 맵에서 제거(PLAYER_LEAVE 브로드캐스트) 후
+ *       대상 맵에 추가(PLAYER_JOIN 브로드캐스트). 전환 당사자에게는
+ *       {@code MAP_CHANGED} 로 새 맵의 현재 플레이어 목록을 전달한다.
  * </ul>
  */
 public final class GameServer extends WebSocketServer {
@@ -39,12 +39,10 @@ public final class GameServer extends WebSocketServer {
     private static final Logger log = LoggerFactory.getLogger(GameServer.class);
 
     private final ObjectMapper json = new ObjectMapper()
-            // payload record 에는 없는 "type" 필드를 허용 — envelope 를 그대로 record 로 변환하기 위함.
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final World world = new World(json);
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
 
-    // 세션 ↔ Player 매핑. JOIN 이전에는 값이 null 일 수 있으므로 별도 관리.
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
 
@@ -57,14 +55,12 @@ public final class GameServer extends WebSocketServer {
     private void registerHandlers() {
         dispatcher.register("JOIN", this::handleJoin);
         dispatcher.register("MOVE", this::handleMove);
+        dispatcher.register("CHANGE_MAP", this::handleChangeMap);
     }
-
-    // --- WebSocket 콜백 ---
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         log.info("소켓 연결: {}", conn.getRemoteSocketAddress());
-        // JOIN 패킷을 기다린다. 그 전까지는 Player 가 없다.
     }
 
     @Override
@@ -74,9 +70,11 @@ public final class GameServer extends WebSocketServer {
             log.info("JOIN 전에 연결 종료: remote={}", conn.getRemoteSocketAddress());
             return;
         }
-        GameMap map = world.defaultMap();
-        map.removePlayer(player.id());
-        map.broadcast("PLAYER_LEAVE", new PlayerLeftPacket(player.id()));
+        GameMap map = world.map(player.mapId());
+        if (map != null) {
+            map.removePlayer(player.id());
+            map.broadcast("PLAYER_LEAVE", new PlayerLeftPacket(player.id()));
+        }
     }
 
     @Override
@@ -108,26 +106,21 @@ public final class GameServer extends WebSocketServer {
             return;
         }
         JoinRequest req = ctx.json().treeToValue(ctx.body(), JoinRequest.class);
-        String name = (req.name() == null || req.name().isBlank())
-                ? "Player" + playerIdSeq.get()
-                : req.name();
+        int id = playerIdSeq.getAndIncrement();
+        String name = (req.name() == null || req.name().isBlank()) ? ("Player" + id) : req.name();
 
         GameMap map = world.defaultMap();
-        int id = playerIdSeq.getAndIncrement();
-        Player player = new Player(id, name, ctx.conn(), map.spawnX(), map.spawnY());
+        Player player = new Player(id, name, ctx.conn(), map.id(), map.spawnX(), map.spawnY());
 
         sessionPlayers.put(ctx.conn(), player);
         map.addPlayer(player);
 
-        // 새 플레이어에게 자신의 정보 + 이미 있던 다른 플레이어 목록 전송
         WelcomePacket welcome = new WelcomePacket(
                 id,
                 player.toState(),
                 map.othersOf(id).stream().map(Player::toState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
-
-        // 기존 플레이어들에게 신규 입장 알림
         map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
     }
 
@@ -140,11 +133,52 @@ public final class GameServer extends WebSocketServer {
         MoveRequest req = ctx.json().treeToValue(ctx.body(), MoveRequest.class);
         player.updatePosition(req.x(), req.y(), req.vx(), req.vy());
 
-        GameMap map = world.defaultMap();
+        GameMap map = world.map(player.mapId());
+        if (map == null) return;
         map.broadcastExcept(
                 player.id(),
                 "PLAYER_MOVE",
                 new PlayerMovedPacket(player.id(), req.x(), req.y(), req.vx(), req.vy())
         );
+    }
+
+    private void handleChangeMap(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "join required"));
+            return;
+        }
+        ChangeMapRequest req = ctx.json().treeToValue(ctx.body(), ChangeMapRequest.class);
+        GameMap target = world.map(req.targetMap());
+        if (target == null) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "unknown map: " + req.targetMap()));
+            return;
+        }
+        if (target.id().equals(player.mapId())) {
+            return; // 같은 맵 재진입 방지
+        }
+
+        // 1) 기존 맵에서 제거 + 그 맵 사용자에게 퇴장 알림
+        GameMap current = world.map(player.mapId());
+        if (current != null) {
+            current.removePlayer(player.id());
+            current.broadcast("PLAYER_LEAVE", new PlayerLeftPacket(player.id()));
+        }
+
+        // 2) 플레이어 상태 갱신 후 새 맵에 추가
+        player.moveTo(target.id(), req.targetX(), req.targetY());
+        target.addPlayer(player);
+
+        // 3) 전환 당사자에게 새 맵 정보 전달
+        MapChangedPacket resp = new MapChangedPacket(
+                target.id(),
+                player.x(),
+                player.y(),
+                target.othersOf(player.id()).stream().map(Player::toState).toList()
+        );
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MAP_CHANGED", resp));
+
+        // 4) 새 맵 기존 사용자에게 입장 알림
+        target.broadcastExcept(player.id(), "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
     }
 }
