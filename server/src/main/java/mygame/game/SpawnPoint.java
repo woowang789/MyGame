@@ -2,6 +2,7 @@ package mygame.game;
 
 import java.util.function.IntSupplier;
 import mygame.game.entity.Monster;
+import mygame.game.item.DropTable;
 
 /**
  * 몬스터 스폰 정의. 맵이 자신의 {@link Monster} 를 재생성할 때 참조한다.
@@ -17,6 +18,7 @@ public record SpawnPoint(
         double speed,
         int maxHp,
         int expReward,
+        DropTable dropTable,
         long respawnDelayMs
 ) {
 

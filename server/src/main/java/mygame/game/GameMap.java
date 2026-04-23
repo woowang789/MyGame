@@ -11,7 +11,11 @@ import java.util.function.IntSupplier;
 import mygame.game.ai.IdleState;
 import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
+import mygame.game.item.DroppedItem;
 import mygame.network.PacketEnvelope;
+import mygame.network.packets.Packets.DroppedItemState;
+import mygame.network.packets.Packets.ItemDroppedPacket;
+import mygame.network.packets.Packets.ItemRemovedPacket;
 import mygame.network.packets.Packets.MonsterMovedPacket;
 import mygame.network.packets.Packets.MonsterSpawnedPacket;
 import mygame.network.packets.Packets.MonsterState;
@@ -34,8 +38,8 @@ public final class GameMap {
     private final Map<Integer, Player> players = new ConcurrentHashMap<>();
     private final Map<Integer, Monster> monsters = new ConcurrentHashMap<>();
     private final List<SpawnPoint> spawnPoints = new ArrayList<>();
-    // 리스폰 대기열: (언제 리스폰할지, 어떤 스폰포인트로)
     private final ConcurrentLinkedQueue<PendingRespawn> pendingRespawns = new ConcurrentLinkedQueue<>();
+    private final Map<Integer, DroppedItem> items = new ConcurrentHashMap<>();
 
     private long sampleAccumulator = 0;
 
@@ -86,6 +90,24 @@ public final class GameMap {
     public Monster monster(int id) { return monsters.get(id); }
     public Collection<Monster> monsters() { return monsters.values(); }
 
+    // --- 드롭 아이템 ---
+
+    public void addDroppedItem(DroppedItem d) {
+        items.put(d.id(), d);
+        broadcast("ITEM_DROPPED", new ItemDroppedPacket(
+                new DroppedItemState(d.id(), d.templateId(), d.x(), d.y())));
+    }
+
+    public DroppedItem takeDroppedItem(int itemId) {
+        DroppedItem removed = items.remove(itemId);
+        if (removed != null) {
+            broadcast("ITEM_REMOVED", new ItemRemovedPacket(itemId));
+        }
+        return removed;
+    }
+
+    public Collection<DroppedItem> droppedItems() { return items.values(); }
+
     /** 사망 처리: 맵에서 제거 + 리스폰 예약 + 브로드캐스트(호출자 책임). */
     public void killMonster(Monster m, SpawnPoint origin) {
         monsters.remove(m.id());
@@ -108,6 +130,14 @@ public final class GameMap {
 
     public void tick(long dtMs) {
         for (Monster m : monsters.values()) m.update(dtMs);
+
+        // 드롭 아이템 만료(기본 60초) 제거
+        long expireNow = System.currentTimeMillis();
+        items.values().removeIf(d -> {
+            if (!d.isExpired(expireNow)) return false;
+            broadcast("ITEM_REMOVED", new ItemRemovedPacket(d.id()));
+            return true;
+        });
 
         // 리스폰 처리
         long now = System.currentTimeMillis();

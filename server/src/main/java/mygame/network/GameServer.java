@@ -20,7 +20,10 @@ import mygame.game.event.GameEvent.MonsterKilled;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
 import mygame.game.SpawnPoint;
+import mygame.game.item.DroppedItem;
 import mygame.network.packets.Packets.AttackRequest;
+import mygame.network.packets.Packets.DroppedItemState;
+import mygame.network.packets.Packets.InventoryPacket;
 import mygame.network.packets.Packets.ExpUpdatedPacket;
 import mygame.network.packets.Packets.LevelUpPacket;
 import mygame.network.packets.Packets.MapChangedPacket;
@@ -76,6 +79,7 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
         dispatcher.register("ATTACK", this::handleAttack);
+        dispatcher.register("PICKUP", this::handlePickup);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -166,7 +170,8 @@ public final class GameServer extends WebSocketServer {
                 id,
                 player.toState(),
                 map.othersOf(id).stream().map(Player::toState).toList(),
-                map.monsters().stream().map(GameServer::toMonsterState).toList()
+                map.monsters().stream().map(GameServer::toMonsterState).toList(),
+                map.droppedItems().stream().map(GameServer::toItemState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
         map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
@@ -223,7 +228,8 @@ public final class GameServer extends WebSocketServer {
                 player.x(),
                 player.y(),
                 target.othersOf(player.id()).stream().map(Player::toState).toList(),
-                target.monsters().stream().map(GameServer::toMonsterState).toList()
+                target.monsters().stream().map(GameServer::toMonsterState).toList(),
+                target.droppedItems().stream().map(GameServer::toItemState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MAP_CHANGED", resp));
 
@@ -233,6 +239,31 @@ public final class GameServer extends WebSocketServer {
 
     private static MonsterState toMonsterState(Monster m) {
         return new MonsterState(m.id(), m.template(), m.x(), m.y(), m.hp(), m.maxHp());
+    }
+
+    private static DroppedItemState toItemState(DroppedItem d) {
+        return new DroppedItemState(d.id(), d.templateId(), d.x(), d.y());
+    }
+
+    private static final long DROP_TTL_MS = 60_000;
+    private static final double PICKUP_RANGE = 40;
+
+    private void handlePickup(PacketContext ctx) {
+        Player player = ctx.player();
+        if (player == null) return;
+        GameMap map = world.map(player.mapId());
+        if (map == null) return;
+
+        for (DroppedItem d : map.droppedItems()) {
+            double dx = d.x() - player.x();
+            double dy = d.y() - player.y();
+            if (Math.abs(dx) <= PICKUP_RANGE && Math.abs(dy) <= PICKUP_RANGE) {
+                if (map.takeDroppedItem(d.id()) == null) continue;
+                player.inventory().add(d.templateId(), 1);
+                player.connection().send(PacketEnvelope.wrap(json, "INVENTORY",
+                        new InventoryPacket(player.inventory().snapshot())));
+            }
+        }
     }
 
     // --- 공격 ---
@@ -275,6 +306,19 @@ public final class GameServer extends WebSocketServer {
                 map.broadcast("MONSTER_DIED", new MonsterDiedPacket(m.id()));
                 int expReward = origin != null ? origin.expReward() : 0;
                 eventBus.publish(new MonsterKilled(player, m, expReward));
+
+                // 드롭 롤: 각 아이템은 독립 시행. 몬스터 위치 근처에 흩뿌림.
+                if (origin != null && origin.dropTable() != null) {
+                    int scatter = 0;
+                    for (String itemId : origin.dropTable().roll()) {
+                        double dropX = m.x() + (scatter - 1) * 16;
+                        scatter++;
+                        DroppedItem d = new DroppedItem(
+                                world.itemIdSeq().getAndIncrement(),
+                                itemId, dropX, m.y(), DROP_TTL_MS);
+                        map.addDroppedItem(d);
+                    }
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SERVER_URL } from '../config';
+import { DroppedItemSprite, ITEM_NAMES } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import { WebSocketClient, type Packet } from '../network/WebSocketClient';
@@ -31,6 +32,13 @@ interface MonsterStateMsg {
   maxHp: number;
 }
 
+interface DroppedItemMsg {
+  id: number;
+  templateId: string;
+  x: number;
+  y: number;
+}
+
 interface PortalDef {
   zone: Phaser.GameObjects.Zone;
   targetMap: string;
@@ -57,6 +65,9 @@ export class GameScene extends Phaser.Scene {
   private readonly playerName = this.generatePlayerName();
   private readonly remotes = new Map<number, RemotePlayer>();
   private readonly monsters = new Map<number, MonsterSprite>();
+  private readonly droppedItems = new Map<number, DroppedItemSprite>();
+  private lastPickupAttemptAt = 0;
+  private invLabel!: Phaser.GameObjects.Text;
 
   private currentMapId = 'henesys';
   private tilemap: Phaser.Tilemaps.Tilemap | null = null;
@@ -179,6 +190,9 @@ export class GameScene extends Phaser.Scene {
     this.network.on('MONSTER_SPAWN', (p) => this.onMonsterSpawn(p));
     this.network.on('PLAYER_EXP', (p) => this.onPlayerExp(p));
     this.network.on('PLAYER_LEVELUP', (p) => this.onPlayerLevelUp(p));
+    this.network.on('ITEM_DROPPED', (p) => this.onItemDropped(p));
+    this.network.on('ITEM_REMOVED', (p) => this.onItemRemoved(p));
+    this.network.on('INVENTORY', (p) => this.onInventory(p));
     this.network.on('ERROR', (p) => console.warn('[Server ERROR]', p.message));
     this.network.onOpen(() => {
       this.network.send({ type: 'JOIN', name: this.playerName });
@@ -194,6 +208,8 @@ export class GameScene extends Phaser.Scene {
     for (const o of others) this.spawnRemote(o);
     const ms = (p.monsters ?? []) as MonsterStateMsg[];
     for (const m of ms) this.spawnMonster(m);
+    const items = (p.items ?? []) as DroppedItemMsg[];
+    for (const it of items) this.spawnItem(it);
   }
 
   private onPlayerJoin(p: Packet): void {
@@ -237,6 +253,10 @@ export class GameScene extends Phaser.Scene {
     for (const o of others) this.spawnRemote(o);
     const ms = (p.monsters ?? []) as MonsterStateMsg[];
     for (const m of ms) this.spawnMonster(m);
+    for (const d of this.droppedItems.values()) d.destroy();
+    this.droppedItems.clear();
+    const items = (p.items ?? []) as DroppedItemMsg[];
+    for (const it of items) this.spawnItem(it);
     // 도착 지점이 복귀 포털과 겹칠 수 있으므로, 방금 전환했다면 현재 겹친 포털을
     // "이미 활성"으로 간주해 즉시 재발동하지 않도록 한다.
     this.activePortalIndex = this.findOverlappingPortalIndex();
@@ -276,6 +296,29 @@ export class GameScene extends Phaser.Scene {
   private onMonsterSpawn(p: Packet): void {
     const monster = p.monster as MonsterStateMsg;
     this.spawnMonster(monster);
+  }
+
+  private spawnItem(ms: DroppedItemMsg): void {
+    if (this.droppedItems.has(ms.id)) return;
+    this.droppedItems.set(ms.id, new DroppedItemSprite(this, ms.id, ms.templateId, ms.x, ms.y));
+  }
+
+  private onItemDropped(p: Packet): void {
+    this.spawnItem(p.item as DroppedItemMsg);
+  }
+
+  private onItemRemoved(p: Packet): void {
+    const id = p.id as number;
+    this.droppedItems.get(id)?.destroy();
+    this.droppedItems.delete(id);
+  }
+
+  private onInventory(p: Packet): void {
+    const items = p.items as Record<string, number>;
+    const lines = Object.entries(items)
+      .map(([k, v]) => `${ITEM_NAMES[k] ?? k}: ${v}`)
+      .join('\n');
+    this.invLabel.setText(lines || '(비어 있음)');
   }
 
   override update(time: number, delta: number): void {
@@ -322,6 +365,21 @@ export class GameScene extends Phaser.Scene {
     for (const r of this.remotes.values()) r.update(delta);
     for (const m of this.monsters.values()) m.update(delta);
 
+    // 자동 픽업: 가까운 드롭 아이템이 있을 때 200ms 간격으로 서버에 요청
+    if (time - this.lastPickupAttemptAt >= 200 && this.droppedItems.size > 0) {
+      const px = this.player.x;
+      const py = this.player.y;
+      for (const it of this.droppedItems.values()) {
+        const dx = it.body.x - px;
+        const dy = it.body.y - py;
+        if (Math.abs(dx) <= 36 && Math.abs(dy) <= 36) {
+          this.lastPickupAttemptAt = time;
+          this.network.send({ type: 'PICKUP' });
+          break;
+        }
+      }
+    }
+
     if (time - this.lastMoveSentAt >= MOVE_PACKET_INTERVAL_MS) {
       this.lastMoveSentAt = time;
       if (this.network.isOpen && this.myId !== -1) {
@@ -362,6 +420,21 @@ export class GameScene extends Phaser.Scene {
     this.expBarFill = this.add
       .rectangle(12, 34, 0, 8, 0xffc64a)
       .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(1001);
+
+    // 인벤토리 HUD (우상단)
+    this.add
+      .rectangle(608, 12, 180, 110, 0x000000, 0.55)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.add
+      .text(618, 18, '인벤토리', { fontSize: '12px', color: '#aee1ff', fontStyle: 'bold' })
+      .setScrollFactor(0)
+      .setDepth(1001);
+    this.invLabel = this.add
+      .text(618, 38, '(비어 있음)', { fontSize: '12px', color: '#ffffff', lineSpacing: 2 })
       .setScrollFactor(0)
       .setDepth(1001);
   }

@@ -1,5 +1,6 @@
 package mygame.game.entity;
 
+import mygame.game.item.Inventory;
 import mygame.network.packets.Packets.PlayerState;
 import org.java_websocket.WebSocket;
 
@@ -28,6 +29,7 @@ public final class Player {
     private volatile String facing = "right";
     private volatile int level = 1;
     private volatile int exp = 0;
+    private final Inventory inventory = new Inventory();
 
     public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
         this.id = id;
@@ -49,6 +51,7 @@ public final class Player {
     public String facing() { return facing; }
     public int level() { return level; }
     public int exp() { return exp; }
+    public Inventory inventory() { return inventory; }
 
     /** 현 레벨 기준 다음 레벨까지 필요한 누적 EXP. 간단 선형식. */
     public int expToNextLevel() {

@@ -29,7 +29,8 @@ public final class Packets {
             int playerId,
             PlayerState self,
             java.util.List<PlayerState> others,
-            java.util.List<MonsterState> monsters
+            java.util.List<MonsterState> monsters,
+            java.util.List<DroppedItemState> items
     ) {}
 
     /** 다른 플레이어가 맵에 들어왔음을 알리는 브로드캐스트. */
@@ -54,7 +55,8 @@ public final class Packets {
     public record MapChangedPacket(
             String mapId, double x, double y,
             java.util.List<PlayerState> others,
-            java.util.List<MonsterState> monsters
+            java.util.List<MonsterState> monsters,
+            java.util.List<DroppedItemState> items
     ) {}
 
     /** 몬스터의 공개 상태. 스폰/스냅샷 시 클라이언트에게 전달된다. */
@@ -80,4 +82,16 @@ public final class Packets {
 
     /** 레벨업 알림. 본인 + 주변에 이펙트용으로 브로드캐스트. */
     public record LevelUpPacket(int playerId, int level) {}
+
+    /** 드롭 아이템 공개 상태. */
+    public record DroppedItemState(int id, String templateId, double x, double y) {}
+
+    /** 맵 위에 새 아이템이 떨어졌음. */
+    public record ItemDroppedPacket(DroppedItemState item) {}
+
+    /** 맵 위 아이템이 집어졌거나 만료되어 사라졌음. */
+    public record ItemRemovedPacket(int id) {}
+
+    /** 플레이어 인벤토리 전체 스냅샷(단순화: 증분 대신 풀 싱크). */
+    public record InventoryPacket(java.util.Map<String, Integer> items) {}
 }
