@@ -5,12 +5,13 @@ import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
 import { EQUIPMENT_IDS, HudView, SKILL_META } from '../ui/HudView';
+import { MapController } from './MapController';
+import {
+  generatePlayerTexture,
+  generateTilesetTexture,
+  PLAYER_TEXTURE
+} from './TextureFactory';
 
-const TILESET_NAME = 'tiles';
-const TILESET_TEXTURE = 'tiles-tex';
-const PLAYER_TEXTURE = 'player';
-
-const TILE_SIZE = 20;
 const MOVE_SPEED = 200;
 const JUMP_VELOCITY = -450;
 const MOVE_PACKET_INTERVAL_MS = 100;
@@ -38,15 +39,6 @@ interface DroppedItemMsg {
   templateId: string;
   x: number;
   y: number;
-}
-
-interface PortalDef {
-  zone: Phaser.GameObjects.Zone;
-  targetMap: string;
-  targetX: number;
-  targetY: number;
-  label: Phaser.GameObjects.Text;
-  visual: Phaser.GameObjects.Rectangle;
 }
 
 /**
@@ -81,8 +73,7 @@ export class GameScene extends Phaser.Scene {
   private readonly hud = new HudView();
 
   private currentMapId = 'henesys';
-  private tilemap: Phaser.Tilemaps.Tilemap | null = null;
-  private portals: PortalDef[] = [];
+  private mapController!: MapController;
   // 현재 겹쳐 있는 포털의 인덱스. 같은 포털에서 벗어나기 전까지는 재진입하지 않는다.
   // 맵 전환 직후 도착 지점이 복귀 포털 위라도 "이미 겹친 상태"로 취급되어 바로 되돌아가지 않게 한다.
   private activePortalIndex = -1;
@@ -97,8 +88,8 @@ export class GameScene extends Phaser.Scene {
     for (const id of MAPS) {
       this.load.tilemapTiledJSON(id, `assets/${id}.json`);
     }
-    this.generateTilesetTexture();
-    this.generatePlayerTexture();
+    generateTilesetTexture(this);
+    generatePlayerTexture(this);
     // 몬스터 텍스처는 MonsterSprite 가 관리.
     MonsterSprite.generateTexture(this);
   }
@@ -134,69 +125,9 @@ export class GameScene extends Phaser.Scene {
     this.createHud();
     this.setupChatInput();
 
-    this.loadMap(this.currentMapId);
+    this.mapController = new MapController(this, this.player);
+    this.mapController.loadMap(this.currentMapId);
     this.setupNetwork();
-  }
-
-  private loadMap(mapId: string): void {
-    // 기존 맵 정리
-    this.tilemap?.destroy();
-    for (const p of this.portals) {
-      p.zone.destroy();
-      p.label.destroy();
-      p.visual.destroy();
-    }
-    this.portals = [];
-
-    const map = this.make.tilemap({ key: mapId });
-    const tileset = map.addTilesetImage(TILESET_NAME, TILESET_TEXTURE, TILE_SIZE, TILE_SIZE);
-    if (!tileset) throw new Error(`타일셋 로드 실패: ${TILESET_NAME}`);
-
-    const ground = map.createLayer('Ground', tileset, 0, 0);
-    if (!ground) throw new Error(`Ground 레이어를 찾을 수 없습니다. map=${mapId}`);
-    ground.setCollisionByProperty({ collides: true });
-
-    this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-    this.physics.add.collider(this.player, ground);
-
-    // 포털 로드
-    const portalLayer = map.getObjectLayer('Portals');
-    if (portalLayer) {
-      for (const obj of portalLayer.objects) {
-        const x = obj.x ?? 0;
-        const y = obj.y ?? 0;
-        const w = obj.width ?? TILE_SIZE;
-        const h = obj.height ?? TILE_SIZE;
-        const props = this.propsToMap(obj.properties);
-        const targetMap = String(props.targetMap ?? '');
-        const targetX = Number(props.targetX ?? 0);
-        const targetY = Number(props.targetY ?? 0);
-        if (!targetMap) continue;
-
-        const zone = this.add.zone(x + w / 2, y + h / 2, w, h);
-        const visual = this.add
-          .rectangle(x + w / 2, y + h / 2, w, h, 0x7fd3ff, 0.25)
-          .setStrokeStyle(2, 0x7fd3ff);
-        const label = this.add
-          .text(x + w / 2, y - 4, `▲ ${targetMap}`, { fontSize: '10px', color: '#7fd3ff' })
-          .setOrigin(0.5, 1);
-        this.portals.push({ zone, targetMap, targetX, targetY, label, visual });
-      }
-    }
-
-    this.tilemap = map;
-  }
-
-  private propsToMap(
-    props: unknown
-  ): Record<string, string | number | boolean> {
-    const out: Record<string, string | number | boolean> = {};
-    if (!Array.isArray(props)) return out;
-    for (const p of props as Array<{ name: string; value: string | number | boolean }>) {
-      out[p.name] = p.value;
-    }
-    return out;
   }
 
   private setupNetwork(): void {
@@ -275,7 +206,7 @@ export class GameScene extends Phaser.Scene {
     this.monsters.clear();
 
     this.currentMapId = mapId;
-    this.loadMap(mapId);
+    this.mapController.loadMap(mapId);
     this.player.setVelocity(0, 0);
     this.player.setPosition(x, y);
 
@@ -288,7 +219,7 @@ export class GameScene extends Phaser.Scene {
     for (const it of items) this.spawnItem(it);
     // 도착 지점이 복귀 포털과 겹칠 수 있으므로, 방금 전환했다면 현재 겹친 포털을
     // "이미 활성"으로 간주해 즉시 재발동하지 않도록 한다.
-    this.activePortalIndex = this.findOverlappingPortalIndex();
+    this.activePortalIndex = this.mapController.findOverlappingPortalIndex();
   }
 
   private spawnRemote(ps: PlayerStateMsg): void {
@@ -555,11 +486,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 포털 자동 진입: 이전 프레임엔 겹치지 않았던 포털과 새로 겹치는 순간에만 트리거.
-    const idx = this.findOverlappingPortalIndex();
+    const idx = this.mapController.findOverlappingPortalIndex();
     if (idx !== this.activePortalIndex) {
       this.activePortalIndex = idx;
       if (idx !== -1 && this.network.isOpen && this.myId !== -1) {
-        const portal = this.portals[idx];
+        const portal = this.mapController.portalAt(idx)!;
         this.network.send({
           type: 'CHANGE_MAP',
           targetMap: portal.targetMap,
@@ -599,14 +530,6 @@ export class GameScene extends Phaser.Scene {
         });
       }
     }
-  }
-
-  private findOverlappingPortalIndex(): number {
-    const playerRect = this.player.getBounds();
-    for (let i = 0; i < this.portals.length; i++) {
-      if (Phaser.Geom.Rectangle.Overlaps(this.portals[i].zone.getBounds(), playerRect)) return i;
-    }
-    return -1;
   }
 
   private createHud(): void {
@@ -778,44 +701,4 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private generateTilesetTexture(): void {
-    const cols = 4;
-    const canvas = this.textures.createCanvas(TILESET_TEXTURE, TILE_SIZE * cols, TILE_SIZE);
-    if (!canvas) return;
-    const ctx = canvas.getContext();
-
-    ctx.fillStyle = '#6b4a2b';
-    ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-    ctx.fillStyle = '#4caf50';
-    ctx.fillRect(0, 0, TILE_SIZE, 5);
-
-    ctx.fillStyle = '#8e6b3d';
-    ctx.fillRect(TILE_SIZE, 0, TILE_SIZE, TILE_SIZE);
-    ctx.fillStyle = '#a37d47';
-    ctx.fillRect(TILE_SIZE, 0, TILE_SIZE, 4);
-    ctx.strokeStyle = '#5a4327';
-    ctx.strokeRect(TILE_SIZE + 0.5, 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
-
-    ctx.fillStyle = '#3e2b17';
-    ctx.fillRect(TILE_SIZE * 2, 0, TILE_SIZE, TILE_SIZE);
-    ctx.fillStyle = '#2a1d0f';
-    for (let i = 0; i < 4; i++) {
-      ctx.fillRect(TILE_SIZE * 2 + i * 5, i * 5, 3, 3);
-    }
-
-    ctx.fillStyle = '#555566';
-    ctx.fillRect(TILE_SIZE * 3, 0, TILE_SIZE, TILE_SIZE);
-
-    canvas.refresh();
-  }
-
-  private generatePlayerTexture(): void {
-    const gfx = this.add.graphics();
-    gfx.fillStyle(0xf1c40f, 1);
-    gfx.fillRect(0, 0, 20, 32);
-    gfx.fillStyle(0x333333, 1);
-    gfx.fillRect(13, 8, 3, 3);
-    gfx.generateTexture(PLAYER_TEXTURE, 20, 32);
-    gfx.destroy();
-  }
 }
