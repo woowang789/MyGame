@@ -74,9 +74,6 @@ export class GameScene extends Phaser.Scene {
 
   private currentMapId = 'henesys';
   private mapController!: MapController;
-  // 현재 겹쳐 있는 포털의 인덱스. 같은 포털에서 벗어나기 전까지는 재진입하지 않는다.
-  // 맵 전환 직후 도착 지점이 복귀 포털 위라도 "이미 겹친 상태"로 취급되어 바로 되돌아가지 않게 한다.
-  private activePortalIndex = -1;
 
   constructor(network: WebSocketClient, session: AuthedSession) {
     super('GameScene');
@@ -223,9 +220,6 @@ export class GameScene extends Phaser.Scene {
     this.droppedItems.clear();
     const items = (p.items ?? []) as DroppedItemMsg[];
     for (const it of items) this.spawnItem(it);
-    // 도착 지점이 복귀 포털과 겹칠 수 있으므로, 방금 전환했다면 현재 겹친 포털을
-    // "이미 활성"으로 간주해 즉시 재발동하지 않도록 한다.
-    this.activePortalIndex = this.mapController.findOverlappingPortalIndex();
   }
 
   private spawnRemote(ps: PlayerStateMsg): void {
@@ -369,13 +363,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private flashPlayerDamage(): void {
+    // 서버 IFRAME_MS(1500ms) 와 동기: 150ms × yoyo × repeat 4 = 1500ms 깜빡임.
     this.player.setTint(0xff4444);
     this.tweens.add({
       targets: this.player,
       alpha: { from: 0.3, to: 1 },
-      duration: 120,
+      duration: 150,
       yoyo: true,
-      repeat: 3,
+      repeat: 4,
       onComplete: () => {
         if (!this.player.active) return;
         this.player.clearTint();
@@ -496,15 +491,11 @@ export class GameScene extends Phaser.Scene {
     // 스킬 쿨다운 HUD 갱신(60Hz 갱신 부담 적음, 문자열 변환만).
     this.hud.updateSkillCooldowns(time, this.skillCooldownUntil);
 
-    // 점프
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && body.blocked.down) {
-      this.player.setVelocityY(JUMP_VELOCITY);
-    }
-
-    // 포털 자동 진입: 이전 프레임엔 겹치지 않았던 포털과 새로 겹치는 순간에만 트리거.
-    const idx = this.mapController.findOverlappingPortalIndex();
-    if (idx !== this.activePortalIndex) {
-      this.activePortalIndex = idx;
+    // 포털 진입 / 점프: UP 키는 두 용도로 쓰인다.
+    // 포털 위에서 UP 을 누르면 맵 이동(점프보다 우선), 아니면 평소처럼 점프.
+    // 이전 프레임 겹침 여부는 더 이상 기억할 필요가 없어 activePortalIndex 는 쓰지 않는다.
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
+      const idx = this.mapController.findOverlappingPortalIndex();
       if (idx !== -1 && this.network.isOpen && this.myId !== -1) {
         const portal = this.mapController.portalAt(idx)!;
         this.network.send({
@@ -513,6 +504,8 @@ export class GameScene extends Phaser.Scene {
           targetX: portal.targetX,
           targetY: portal.targetY
         });
+      } else if (body.blocked.down) {
+        this.player.setVelocityY(JUMP_VELOCITY);
       }
     }
 
