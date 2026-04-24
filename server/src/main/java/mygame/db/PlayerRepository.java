@@ -16,6 +16,8 @@ public interface PlayerRepository {
             String name,
             int level,
             int exp,
+            /** 소지 메소(재화). DB 기본값 0. */
+            long meso,
             Map<String, Integer> items,
             /** 장비 슬롯 맵(enum 이름 → 아이템 ID). Phase I. */
             Map<String, String> equipment) {}
@@ -28,6 +30,7 @@ public interface PlayerRepository {
     /** 이름으로 생성. 이미 있으면 예외. Phase L 이후에는 accountId 와 함께 불린다. */
     PlayerData create(String name, long accountId);
 
-    /** 레벨/EXP/인벤토리/장비 전체를 덮어쓰기. */
-    void save(long id, int level, int exp, Map<String, Integer> items, Map<String, String> equipment);
+    /** 레벨/EXP/메소/인벤토리/장비 전체를 덮어쓰기. */
+    void save(long id, int level, int exp, long meso,
+              Map<String, Integer> items, Map<String, String> equipment);
 }

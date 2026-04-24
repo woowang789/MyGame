@@ -105,6 +105,9 @@ public final class Packets {
     /** 플레이어 인벤토리 전체 스냅샷(단순화: 증분 대신 풀 싱크). */
     public record InventoryPacket(java.util.Map<String, Integer> items) {}
 
+    /** 현재 소지 메소(재화) 알림. 본인에게만 전송. gained 는 이번 변화량(획득 +, 소비 -). */
+    public record MesoUpdatedPacket(long meso, long gained) {}
+
     /** 채팅 요청. scope="ALL"(맵 전체) 또는 "WHISPER"(target 이름 지정). */
     public record ChatRequest(String scope, String target, String message) {}
 

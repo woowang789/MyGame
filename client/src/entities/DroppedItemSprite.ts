@@ -4,14 +4,17 @@ import Phaser from 'phaser';
 const ITEM_COLORS: Record<string, number> = {
   red_potion: 0xe74c3c,
   blue_potion: 0x3498db,
-  snail_shell: 0xb36836
+  snail_shell: 0xb36836,
+  // 재화 메소는 금색. 서버 DroppedItem.MESO_ID 와 맞춰야 한다.
+  meso: 0xffd84a
 };
 
 /** 템플릿 ID → 표시 이름. */
 export const ITEM_NAMES: Record<string, string> = {
   red_potion: '빨간 포션',
   blue_potion: '파란 포션',
-  snail_shell: '달팽이 껍질'
+  snail_shell: '달팽이 껍질',
+  meso: '메소'
 };
 
 /**

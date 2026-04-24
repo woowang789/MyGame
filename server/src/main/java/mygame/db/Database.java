@@ -80,6 +80,10 @@ public final class Database implements AutoCloseable {
             st.execute("""
                 ALTER TABLE players ADD COLUMN IF NOT EXISTS account_id BIGINT
             """);
+            // 재화(메소) 컬럼. 기존 행은 0 으로 초기화되도록 DEFAULT 지정.
+            st.execute("""
+                ALTER TABLE players ADD COLUMN IF NOT EXISTS meso BIGINT NOT NULL DEFAULT 0
+            """);
             log.info("DB 마이그레이션 완료.");
         } catch (SQLException e) {
             throw new RuntimeException("DB 마이그레이션 실패", e);

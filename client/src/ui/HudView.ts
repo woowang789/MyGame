@@ -55,6 +55,11 @@ export class HudView {
     this.setWidthPct('hp-bar-fill', maxHp > 0 ? (100 * currentHp) / maxHp : 0);
   }
 
+  /** 메소(재화) 표시 갱신. 숫자는 천 단위 구분 콤마. */
+  updateMeso(meso: number): void {
+    this.setText('meso-text', `${meso.toLocaleString('ko-KR')} 메소`);
+  }
+
   updateEquipment(slots: Record<string, string>): void {
     const render = (elId: string, slot: string) => {
       const el = document.getElementById(elId);
