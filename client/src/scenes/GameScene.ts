@@ -159,12 +159,25 @@ export class GameScene extends Phaser.Scene {
     this.network.on('PLAYER_DIED', (p) => this.onPlayerDied(p));
     this.network.on('PLAYER_RESPAWN', (p) => this.onPlayerRespawn(p));
     this.network.on('ERROR', (p) => {
-      console.warn('[Server ERROR]', p.message);
-      this.appendChatLog('sys', `[오류] ${p.message}`);
+      const msg = String(p.message ?? '');
+      console.warn('[Server ERROR]', msg);
+      this.appendChatLog('sys', `[오류] ${msg}`);
+      // 가장 최근 서버 에러를 기억했다가 소켓이 끊길 때 사용자에게 안내한다.
+      this.lastServerError = msg;
+    });
+    // 서버가 연결을 종료하면(중복 로그인 등) 로그인 화면으로 되돌린다.
+    // 가장 단순하고 확실한 방법은 페이지 재로드 — 게임 상태·WebSocket·DOM 모두 깨끗이 초기화된다.
+    this.network.onClose(() => {
+      const reason = this.lastServerError || '서버와의 연결이 종료되었습니다.';
+      // alert 는 reload 전까지 페이지를 멈춰 사용자가 사유를 읽을 수 있게 한다.
+      window.alert(reason);
+      window.location.reload();
     });
     // 인증은 이미 완료되어 있다. 즉시 JOIN 전송.
     this.network.send({ type: 'JOIN', name: this.playerName });
   }
+
+  private lastServerError: string | null = null;
 
   private onWelcome(p: Packet): void {
     this.myId = p.playerId as number;

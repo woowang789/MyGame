@@ -6,11 +6,13 @@
 export type Packet = { type: string } & Record<string, unknown>;
 export type PacketHandler = (packet: Packet) => void;
 type OpenHandler = () => void;
+type CloseHandler = (event: CloseEvent) => void;
 
 export class WebSocketClient {
   private socket: WebSocket | null = null;
   private readonly handlers = new Map<string, PacketHandler>();
   private readonly openHandlers: OpenHandler[] = [];
+  private readonly closeHandlers: CloseHandler[] = [];
 
   constructor(private readonly url: string) {}
 
@@ -39,6 +41,7 @@ export class WebSocketClient {
 
     ws.addEventListener('close', (event) => {
       console.log(`[WS] 연결 종료 (code=${event.code})`);
+      for (const h of this.closeHandlers) h(event);
     });
 
     ws.addEventListener('error', (event) => {
@@ -52,6 +55,10 @@ export class WebSocketClient {
 
   onOpen(handler: OpenHandler): void {
     this.openHandlers.push(handler);
+  }
+
+  onClose(handler: CloseHandler): void {
+    this.closeHandlers.push(handler);
   }
 
   send(packet: Packet): void {
