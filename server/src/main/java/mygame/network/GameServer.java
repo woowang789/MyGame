@@ -402,6 +402,8 @@ public final class GameServer extends WebSocketServer {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "join required"));
             return;
         }
+        // 사망 중에는 위치 변경 불가. 부활 패킷이 권위적으로 스폰 지점에 세울 때까지 고정.
+        if (player.isDead()) return;
         MoveRequest req = ctx.json().treeToValue(ctx.body(), MoveRequest.class);
         player.updatePosition(req.x(), req.y(), req.vx(), req.vy());
 
@@ -420,6 +422,7 @@ public final class GameServer extends WebSocketServer {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "join required"));
             return;
         }
+        if (player.isDead()) return;
         ChangeMapRequest req = ctx.json().treeToValue(ctx.body(), ChangeMapRequest.class);
         GameMap target = world.map(req.targetMap());
         if (target == null) {
