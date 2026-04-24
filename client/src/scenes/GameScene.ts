@@ -145,6 +145,7 @@ export class GameScene extends Phaser.Scene {
     this.network.on('ITEM_DROPPED', (p) => this.onItemDropped(p));
     this.network.on('ITEM_REMOVED', (p) => this.onItemRemoved(p));
     this.network.on('INVENTORY', (p) => this.onInventory(p));
+    this.network.on('MESO', (p) => this.onMeso(p));
     this.network.on('CHAT', (p) => this.onChat(p));
     this.network.on('EQUIPMENT', (p) => this.onEquipment(p));
     this.network.on('STATS', (p) => this.onStats(p));
@@ -232,7 +233,7 @@ export class GameScene extends Phaser.Scene {
 
   private spawnMonster(ms: MonsterStateMsg): void {
     if (this.monsters.has(ms.id)) return;
-    this.monsters.set(ms.id, new MonsterSprite(this, ms.id, ms.x, ms.y, ms.hp, ms.maxHp));
+    this.monsters.set(ms.id, new MonsterSprite(this, ms.id, ms.template, ms.x, ms.y, ms.hp, ms.maxHp));
   }
 
   private onMonsterMove(p: Packet): void {
@@ -280,6 +281,16 @@ export class GameScene extends Phaser.Scene {
       .map(([k, v]) => `${ITEM_NAMES[k] ?? k}: ${v}`)
       .join('\n');
     this.invLabel.setText(lines || '(비어 있음)');
+  }
+
+  private onMeso(p: Packet): void {
+    const meso = Number(p.meso ?? 0);
+    const gained = Number(p.gained ?? 0);
+    this.hud.updateMeso(meso);
+    if (gained > 0) {
+      // 획득 시 채팅 로그에 시스템 메시지로 남겨 피드백을 준다.
+      this.appendChatLog('sys', `+${gained.toLocaleString('ko-KR')} 메소 획득 (보유 ${meso.toLocaleString('ko-KR')})`);
+    }
   }
 
   private onEquipment(p: Packet): void {

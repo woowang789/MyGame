@@ -26,7 +26,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
 
     @Override
     public Optional<PlayerData> findByName(String name) {
-        String sql = "SELECT id, name, level, exp FROM players WHERE name = ?";
+        String sql = "SELECT id, name, level, exp, meso FROM players WHERE name = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, name);
@@ -38,7 +38,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
 
     @Override
     public Optional<PlayerData> findByAccountId(long accountId) {
-        String sql = "SELECT id, name, level, exp FROM players WHERE account_id = ?";
+        String sql = "SELECT id, name, level, exp, meso FROM players WHERE account_id = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, accountId);
@@ -55,6 +55,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
             return Optional.of(new PlayerData(
                     id, rs.getString("name"),
                     rs.getInt("level"), rs.getInt("exp"),
+                    rs.getLong("meso"),
                     loadItems(conn, id),
                     loadEquipment(conn, id)));
         }
@@ -71,7 +72,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (!keys.next()) throw new SQLException("INSERT 후 id 조회 실패");
                 long id = keys.getLong(1);
-                return new PlayerData(id, name, 1, 0, Map.of(), Map.of());
+                return new PlayerData(id, name, 1, 0, 0L, Map.of(), Map.of());
             }
         } catch (SQLException e) {
             throw new RuntimeException("create 실패: " + name, e);
@@ -79,15 +80,17 @@ public final class JdbcPlayerRepository implements PlayerRepository {
     }
 
     @Override
-    public void save(long id, int level, int exp, Map<String, Integer> items, Map<String, String> equipment) {
+    public void save(long id, int level, int exp, long meso,
+                     Map<String, Integer> items, Map<String, String> equipment) {
         try (Connection conn = db.getConnection()) {
             conn.setAutoCommit(false);
             try {
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "UPDATE players SET level=?, exp=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")) {
+                        "UPDATE players SET level=?, exp=?, meso=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")) {
                     ps.setInt(1, level);
                     ps.setInt(2, exp);
-                    ps.setLong(3, id);
+                    ps.setLong(3, Math.max(0, meso));
+                    ps.setLong(4, id);
                     ps.executeUpdate();
                 }
                 try (PreparedStatement del = conn.prepareStatement(

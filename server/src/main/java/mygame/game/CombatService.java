@@ -55,14 +55,27 @@ public final class CombatService {
     }
 
     private void rollDrops(GameMap map, Monster target, SpawnPoint origin) {
-        if (origin == null || origin.dropTable() == null) return;
+        if (origin == null) return;
         int scatter = 0;
-        for (String itemId : origin.dropTable().roll()) {
-            double dropX = target.x() + (scatter - 1) * DROP_SCATTER_STEP;
-            scatter++;
-            map.addDroppedItem(new DroppedItem(
-                    world.itemIdSeq().getAndIncrement(),
-                    itemId, dropX, target.y(), DROP_TTL_MS));
+        if (origin.dropTable() != null) {
+            for (String itemId : origin.dropTable().roll()) {
+                double dropX = target.x() + (scatter - 1) * DROP_SCATTER_STEP;
+                scatter++;
+                map.addDroppedItem(new DroppedItem(
+                        world.itemIdSeq().getAndIncrement(),
+                        itemId, dropX, target.y(), DROP_TTL_MS));
+            }
+        }
+        // 메소 드롭: [mesoMin, mesoMax] 균등 분포. 0 이면 생략.
+        if (origin.mesoMax() > 0 && origin.mesoMax() >= origin.mesoMin()) {
+            int amount = java.util.concurrent.ThreadLocalRandom.current()
+                    .nextInt(origin.mesoMin(), origin.mesoMax() + 1);
+            if (amount > 0) {
+                double dropX = target.x() + (scatter - 1) * DROP_SCATTER_STEP;
+                map.addDroppedItem(new DroppedItem(
+                        world.itemIdSeq().getAndIncrement(),
+                        DroppedItem.MESO_ID, dropX, target.y(), DROP_TTL_MS, amount));
+            }
         }
     }
 }

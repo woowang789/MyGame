@@ -6,8 +6,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import mygame.game.entity.Player;
-import mygame.game.item.DropTable;
-import mygame.game.item.DropTable.Entry;
 
 /**
  * 월드 = 모든 맵의 컨테이너 + 몬스터/아이템 ID 발급.
@@ -15,20 +13,6 @@ import mygame.game.item.DropTable.Entry;
 public final class World {
 
     private static final double GROUND_Y = 544;
-    private static final int SNAIL_HP = 50;
-    private static final int SNAIL_EXP = 15;
-    private static final long SNAIL_RESPAWN_MS = 5000;
-    private static final int SNAIL_ATK = 10;
-    private static final long SNAIL_ATK_INTERVAL_MS = 1500;
-
-    /** 달팽이 드롭: 빨간 포션 50%, 껍질 40%, 파란 포션 10%, 나무 검 5%, 가죽 모자 3%. */
-    private static final DropTable SNAIL_DROPS = DropTable.of(
-            new Entry("red_potion", 0.5),
-            new Entry("snail_shell", 0.4),
-            new Entry("blue_potion", 0.1),
-            new Entry("wooden_sword", 0.05),
-            new Entry("leather_cap", 0.03)
-    );
 
     private final Map<String, GameMap> maps = new ConcurrentHashMap<>();
     private final AtomicInteger monsterIdSeq = new AtomicInteger(1);
@@ -48,19 +32,26 @@ public final class World {
         maps.put(henesys.id(), henesys);
         maps.put(ellinia.id(), ellinia);
 
-        registerSnails(henesys, 2, 200, 700, 60);
-        registerSnails(ellinia, 3, 160, 720, 50);
+        // 헤네시스: 초보용. 달팽이 + 나무 토막.
+        registerBand(henesys, "snail", 2, 200, 700);
+        registerBand(henesys, "stump", 2, 300, 650);
+
+        // 엘리니아: 조금 더 어려운 혼합 구성.
+        registerBand(ellinia, "blue_snail", 3, 160, 720);
+        registerBand(ellinia, "orange_mushroom", 2, 220, 660);
+        registerBand(ellinia, "red_snail", 1, 380, 500);
     }
 
-    private void registerSnails(GameMap map, int count, double minX, double maxX, double speed) {
+    /**
+     * 한 종을 구간 내에 균등 분포로 {@code count} 마리 배치.
+     * 각 개체는 동일한 배회 구간([minX, maxX])을 공유한다.
+     */
+    private void registerBand(GameMap map, String templateId, int count,
+                              double minX, double maxX) {
         double step = (maxX - minX) / (count + 1);
         for (int i = 1; i <= count; i++) {
             double spawnX = minX + step * i;
-            map.registerSpawn(new SpawnPoint(
-                    "snail", spawnX, GROUND_Y, minX, maxX, speed,
-                    SNAIL_HP, SNAIL_EXP, SNAIL_DROPS, SNAIL_RESPAWN_MS,
-                    SNAIL_ATK, SNAIL_ATK_INTERVAL_MS
-            ));
+            map.registerSpawn(SpawnPoint.of(templateId, spawnX, GROUND_Y, minX, maxX));
         }
     }
 

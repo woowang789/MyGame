@@ -36,6 +36,8 @@ public final class Player {
     private volatile int exp = 0;
     private volatile int hp = 0;
     private volatile int mp = 0;
+    /** 소지 메소(게임 내 재화). 음수로 가지 않도록 변경은 반드시 synchronized 로. */
+    private volatile long meso = 0;
     /** 무적 시간 종료 시각(ms). 이 값보다 과거 시각 피격만 유효. */
     private volatile long invulnerableUntil = 0;
     private final Inventory inventory = new Inventory();
@@ -67,6 +69,24 @@ public final class Player {
     public int exp() { return exp; }
     public int hp() { return hp; }
     public int mp() { return mp; }
+    public long meso() { return meso; }
+
+    /** 메소 획득. amount 가 0 이하면 무시. */
+    public synchronized void addMeso(long amount) {
+        if (amount <= 0) return;
+        meso += amount;
+    }
+
+    /** 메소 소비. 부족하면 {@code false}(변경 없음). */
+    public synchronized boolean spendMeso(long amount) {
+        if (amount <= 0) return true;
+        if (meso < amount) return false;
+        meso -= amount;
+        return true;
+    }
+
+    /** DB 복원 시 사용. 유효성 검증은 Repository 계층이 담당. */
+    public void restoreMeso(long amount) { this.meso = Math.max(0, amount); }
     public boolean isDead() { return hp <= 0; }
     public boolean isInvulnerable(long now) { return now < invulnerableUntil; }
     public Inventory inventory() { return inventory; }

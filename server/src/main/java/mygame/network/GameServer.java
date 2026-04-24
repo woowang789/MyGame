@@ -176,6 +176,7 @@ public final class GameServer extends WebSocketServer {
                         player.dbId(),
                         player.level(),
                         player.exp(),
+                        player.meso(),
                         player.inventory().snapshot(),
                         equipmentSnapshotAsStringMap(player));
                 log.info("플레이어 저장: name={}, lv={}, exp={}", player.name(), player.level(), player.exp());
@@ -254,6 +255,7 @@ public final class GameServer extends WebSocketServer {
 
         player.setDbId(data.id());
         player.restoreProgress(data.level(), data.exp());
+        player.restoreMeso(data.meso());
         data.items().forEach(player.inventory()::add);
         // 장비 복원: 슬롯별로 equip() 호출(원래 로직과 동일한 경로를 타게 해 불일치 제거).
         data.equipment().forEach((slotName, itemId) -> player.equipment().equip(itemId));
@@ -280,6 +282,8 @@ public final class GameServer extends WebSocketServer {
                 new ExpUpdatedPacket(player.exp(), player.level(), player.expToNextLevel(), 0)));
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
                 new InventoryPacket(player.inventory().snapshot())));
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MESO",
+                new mygame.network.packets.Packets.MesoUpdatedPacket(player.meso(), 0)));
         sendEquipmentAndStats(player);
     }
 
@@ -511,9 +515,17 @@ public final class GameServer extends WebSocketServer {
             double dy = d.y() - player.y();
             if (Math.abs(dx) <= PICKUP_RANGE && Math.abs(dy) <= PICKUP_RANGE) {
                 if (map.takeDroppedItem(d.id()) == null) continue;
-                player.inventory().add(d.templateId(), 1);
-                player.connection().send(PacketEnvelope.wrap(json, "INVENTORY",
-                        new InventoryPacket(player.inventory().snapshot())));
+                if (d.isMeso()) {
+                    // 메소는 인벤토리가 아닌 지갑에 들어간다. 변화량도 함께 통지.
+                    int gained = d.amount();
+                    player.addMeso(gained);
+                    player.connection().send(PacketEnvelope.wrap(json, "MESO",
+                            new mygame.network.packets.Packets.MesoUpdatedPacket(player.meso(), gained)));
+                } else {
+                    player.inventory().add(d.templateId(), 1);
+                    player.connection().send(PacketEnvelope.wrap(json, "INVENTORY",
+                            new InventoryPacket(player.inventory().snapshot())));
+                }
             }
         }
     }
