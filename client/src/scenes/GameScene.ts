@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { AuthedSession } from '../auth/LoginScreen';
-import { DroppedItemSprite, ITEM_NAMES } from '../entities/DroppedItemSprite';
+import { DroppedItemSprite } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
@@ -57,8 +57,6 @@ export class GameScene extends Phaser.Scene {
   private skillKeys!: Record<string, Phaser.Input.Keyboard.Key>;
   private myLabel!: Phaser.GameObjects.Text;
   private facing: 'left' | 'right' = 'right';
-  private statusLabel!: Phaser.GameObjects.Text;
-  private expBarFill!: Phaser.GameObjects.Rectangle;
   private readonly network: WebSocketClient;
   private lastMoveSentAt = 0;
   private myId = -1;
@@ -67,7 +65,6 @@ export class GameScene extends Phaser.Scene {
   private readonly monsters = new Map<number, MonsterSprite>();
   private readonly droppedItems = new Map<number, DroppedItemSprite>();
   private lastPickupAttemptAt = 0;
-  private invLabel!: Phaser.GameObjects.Text;
   /** 인벤토리 스냅샷. Q 키로 첫 장비를 찾을 때 참조. */
   private inventoryItems: Record<string, number> = {};
   /** 현재 착용 중인 장비 슬롯. E 키로 해제. */
@@ -127,7 +124,7 @@ export class GameScene extends Phaser.Scene {
       recovery: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.THREE)
     };
 
-    this.createHud();
+    this.hud.setPlayerName(this.playerName);
     this.setupChatInput();
 
     this.mapController = new MapController(this, this.player);
@@ -297,10 +294,7 @@ export class GameScene extends Phaser.Scene {
   private onInventory(p: Packet): void {
     const items = p.items as Record<string, number>;
     this.inventoryItems = items;
-    const lines = Object.entries(items)
-      .map(([k, v]) => `${ITEM_NAMES[k] ?? k}: ${v}`)
-      .join('\n');
-    this.invLabel.setText(lines || '(비어 있음)');
+    this.hud.updateInventory(items);
   }
 
   private onMeso(p: Packet): void {
@@ -599,50 +593,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private createHud(): void {
-    // 화면 좌상단 고정 HUD (카메라 스크롤 영향 X)
-    this.statusLabel = this.add
-      .text(12, 12, 'Lv 1  EXP 0 / 50', {
-        fontSize: '13px',
-        color: '#ffeb8a',
-        fontStyle: 'bold'
-      })
-      .setScrollFactor(0)
-      .setDepth(1000);
-    this.add
-      .rectangle(12, 34, 180, 8, 0x000000, 0.6)
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(1000);
-    this.expBarFill = this.add
-      .rectangle(12, 34, 0, 8, 0xffc64a)
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(1001);
-
-    // 인벤토리 HUD (우상단)
-    this.add
-      .rectangle(608, 12, 180, 110, 0x000000, 0.55)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(1000);
-    this.add
-      .text(618, 18, '인벤토리', { fontSize: '12px', color: '#aee1ff', fontStyle: 'bold' })
-      .setScrollFactor(0)
-      .setDepth(1001);
-    this.invLabel = this.add
-      .text(618, 38, '(비어 있음)', { fontSize: '12px', color: '#ffffff', lineSpacing: 2 })
-      .setScrollFactor(0)
-      .setDepth(1001);
-  }
-
   private onPlayerExp(p: Packet): void {
     const level = p.level as number;
     const exp = p.exp as number;
     const toNext = p.toNextLevel as number;
     const gained = p.gained as number;
-    this.statusLabel.setText(`Lv ${level}  EXP ${exp} / ${toNext}`);
-    this.expBarFill.displayWidth = 180 * Math.max(0, Math.min(1, exp / toNext));
+    this.hud.updateExp(level, exp, toNext);
     if (gained > 0) {
       const txt = this.add
         .text(this.player.x, this.player.y - 36, `+${gained} EXP`, {
@@ -718,13 +674,41 @@ export class GameScene extends Phaser.Scene {
 
     // 입력창 포커스 중에는 Phaser 키 캡처를 끄고, 벗어나면 켠다.
     // 추가로 blur 시 resetKeys() 를 호출해 입력창에서 눌렸던 Q/E 가 JustDown 으로
-    // 흘러들어가지 않도록 내부 키 상태를 초기화한다. (이 처리가 없으면 채팅 후
-    // Q/E 단축키가 "한 번 씹히는" 듯한 현상이 발생한다.)
-    input.addEventListener('focus', () => this.input.keyboard?.disableGlobalCapture());
+    // 흘러들어가지 않도록 내부 키 상태를 초기화한다.
+    const box = document.getElementById('chat-box');
+    input.addEventListener('focus', () => {
+      this.input.keyboard?.disableGlobalCapture();
+      box?.classList.add('expanded');
+      box?.classList.remove('ghost');
+      this.clearGhostTimer();
+    });
     input.addEventListener('blur', () => {
       this.input.keyboard?.enableGlobalCapture();
       this.input.keyboard?.resetKeys();
+      box?.classList.remove('expanded');
     });
+  }
+
+  /**
+   * 새 메시지 도착 시 채팅 박스를 잠시 반투명 노출(.ghost). 포커스 중이면 건너뛴다.
+   * 일정 시간 뒤 자동 제거. 포커스가 시작되면 타이머를 해제해 깜빡임을 막는다.
+   */
+  private ghostTimer: number | null = null;
+  private showChatGhost(): void {
+    const box = document.getElementById('chat-box');
+    if (!box || box.classList.contains('expanded')) return;
+    box.classList.add('ghost');
+    this.clearGhostTimer();
+    this.ghostTimer = window.setTimeout(() => {
+      box.classList.remove('ghost');
+      this.ghostTimer = null;
+    }, 4000);
+  }
+  private clearGhostTimer(): void {
+    if (this.ghostTimer !== null) {
+      window.clearTimeout(this.ghostTimer);
+      this.ghostTimer = null;
+    }
   }
 
   /** 채팅 입력창이 포커스 상태인지. 게임 단축키(Q/E/숫자 등) 판정에서 제외하는 데 쓴다. */
@@ -771,6 +755,8 @@ export class GameScene extends Phaser.Scene {
     // 최근 80줄만 유지
     while (log.children.length > 80) log.removeChild(log.firstChild!);
     log.scrollTop = log.scrollHeight;
+    // 축소 상태였으면 ghost 로 잠시 드러낸다.
+    this.showChatGhost();
   }
 
   private spawnAttackEffect(): void {

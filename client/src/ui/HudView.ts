@@ -60,6 +60,45 @@ export class HudView {
     this.setText('meso-text', `${meso.toLocaleString('ko-KR')} 메소`);
   }
 
+  /** 로그인 직후 1회: 플레이어 카드 상단 이름 표시. */
+  setPlayerName(name: string): void {
+    this.setText('pc-name', name);
+  }
+
+  /** 레벨 · EXP 바 갱신. toNext 가 0 이면 바 비움 처리. */
+  updateExp(level: number, exp: number, toNext: number): void {
+    this.setText('pc-level', `Lv ${level}`);
+    this.setText('exp-text', `${exp} / ${toNext}`);
+    this.setWidthPct('exp-bar-fill', toNext > 0 ? (100 * exp) / toNext : 0);
+  }
+
+  /** 인벤토리 스냅샷을 좌측 패널에 렌더. 빈 경우 placeholder. */
+  updateInventory(items: Record<string, number>): void {
+    const list = document.getElementById('inv-list');
+    if (!list) return;
+    const entries = Object.entries(items).filter(([, n]) => n > 0);
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty">(비어 있음)</div>';
+      return;
+    }
+    // DOM 을 한 번에 교체해 재렌더 부담 최소화.
+    const frag = document.createDocumentFragment();
+    for (const [id, qty] of entries) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = ITEM_NAMES[id] ?? id;
+      const q = document.createElement('span');
+      q.className = 'qty';
+      q.textContent = String(qty);
+      row.appendChild(name);
+      row.appendChild(q);
+      frag.appendChild(row);
+    }
+    list.replaceChildren(frag);
+  }
+
   updateEquipment(slots: Record<string, string>): void {
     const render = (elId: string, slot: string) => {
       const el = document.getElementById(elId);
