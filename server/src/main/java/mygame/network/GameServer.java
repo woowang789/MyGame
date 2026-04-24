@@ -6,10 +6,14 @@ import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import mygame.game.CombatListener;
 import mygame.game.GameLoop;
 import mygame.game.GameMap;
 import mygame.game.ProgressionSystem;
 import mygame.game.World;
+import mygame.network.packets.Packets.PlayerDamagedPacket;
+import mygame.network.packets.Packets.PlayerDiedPacket;
+import mygame.network.packets.Packets.PlayerRespawnedPacket;
 import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
 import mygame.game.event.EventBus;
@@ -118,6 +122,56 @@ public final class GameServer extends WebSocketServer {
         this.accountRepo = new JdbcAccountRepository(database);
         this.authService = new AuthService(accountRepo);
         registerHandlers();
+        // 전투 이벤트를 네트워크로 변환. World → 각 GameMap.
+        world.setCombatListener(new CombatListener() {
+            @Override
+            public void onPlayerDamaged(Player target, Monster attacker, int dmgApplied) {
+                GameMap m = world.map(target.mapId());
+                if (m == null) return;
+                int maxHp = target.effectiveStats().maxHp();
+                // 공격자 id 는 "몬스터 구분용 음수" 로 인코딩해 플레이어 id 와 섞이지 않게 한다.
+                m.broadcast("PLAYER_DAMAGED",
+                        new PlayerDamagedPacket(target.id(), dmgApplied, target.hp(), maxHp, -attacker.id()));
+                // 본인에게 최신 스탯(HP/MP) 동기화.
+                sendStats(target);
+            }
+
+            @Override
+            public void onPlayerDied(Player target, Monster killer) {
+                GameMap m = world.map(target.mapId());
+                if (m != null) m.broadcast("PLAYER_DIED", new PlayerDiedPacket(target.id()));
+                // 3초 후 부활. 게임 루프가 아닌 별도 스케줄러로 간단 처리.
+                scheduleRespawn(target);
+            }
+        });
+    }
+
+    private static final long RESPAWN_DELAY_MS = 3000;
+    private final java.util.concurrent.ScheduledExecutorService respawnExec =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "respawn");
+                t.setDaemon(true);
+                return t;
+            });
+
+    private void scheduleRespawn(Player target) {
+        respawnExec.schedule(() -> {
+            try {
+                if (!target.connection().isOpen()) return;
+                GameMap current = world.map(target.mapId());
+                if (current == null) return;
+                // 현재 맵의 스폰 지점으로 텔레포트 + HP/MP 풀.
+                target.moveTo(current.id(), current.spawnX(), current.spawnY());
+                target.fullHealHp();
+                target.fullHealMp();
+                current.broadcast("PLAYER_RESPAWN",
+                        new PlayerRespawnedPacket(target.id(), current.id(),
+                                target.x(), target.y(), target.hp()));
+                sendStats(target);
+            } catch (Exception e) {
+                log.error("리스폰 처리 실패 playerId={}", target.id(), e);
+            }
+        }, RESPAWN_DELAY_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private void registerHandlers() {
@@ -310,7 +364,8 @@ public final class GameServer extends WebSocketServer {
         data.items().forEach(player.inventory()::add);
         // 장비 복원: 슬롯별로 equip() 호출(원래 로직과 동일한 경로를 타게 해 불일치 제거).
         data.equipment().forEach((slotName, itemId) -> player.equipment().equip(itemId));
-        // MP 는 세션 시작 시 최대로 충전. (HP/MP 영속화는 이후 Phase 에서.)
+        // HP/MP 는 세션 시작 시 최대로 충전. (HP/MP 영속화는 이후 Phase 에서.)
+        player.fullHealHp();
         player.fullHealMp();
 
         sessionPlayers.put(ctx.conn(), player);
@@ -382,6 +437,7 @@ public final class GameServer extends WebSocketServer {
     private void handleUseSkill(PacketContext ctx) throws Exception {
         Player player = ctx.player();
         if (player == null) return;
+        if (player.isDead()) return;
         UseSkillRequest req = ctx.json().treeToValue(ctx.body(), UseSkillRequest.class);
         String skillId = req.skillId();
         if (skillId == null || !SkillRegistry.exists(skillId)) {
@@ -459,11 +515,11 @@ public final class GameServer extends WebSocketServer {
         sendStats(player);
     }
 
-    /** 최종 스탯 + 현재 MP 를 본인에게 전달. 스킬 사용·장비 변경 시 모두 호출. */
+    /** 최종 스탯 + 현재 HP/MP 를 본인에게 전달. 스킬 사용·장비 변경·피격 시 모두 호출. */
     private void sendStats(Player player) {
         mygame.game.stat.Stats s = player.effectiveStats();
         player.connection().send(PacketEnvelope.wrap(json, "STATS",
-                new StatsPacket(s.maxHp(), s.maxMp(), s.attack(), s.speed(), player.mp())));
+                new StatsPacket(s.maxHp(), s.maxMp(), s.attack(), s.speed(), player.hp(), player.mp())));
     }
 
     private void handleMove(PacketContext ctx) throws Exception {
@@ -605,6 +661,7 @@ public final class GameServer extends WebSocketServer {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "join required"));
             return;
         }
+        if (player.isDead()) return;
         AttackRequest req = ctx.json().treeToValue(ctx.body(), AttackRequest.class);
         GameMap map = world.map(player.mapId());
         if (map == null) return;

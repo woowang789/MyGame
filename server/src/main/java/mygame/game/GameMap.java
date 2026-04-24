@@ -30,11 +30,26 @@ public final class GameMap {
     private static final Logger log = LoggerFactory.getLogger(GameMap.class);
     private static final long MONSTER_SAMPLE_MS = 200;
 
+    /** 플레이어-몬스터 접촉 판정 박스. 간단한 AABB. */
+    private static final double CONTACT_RANGE_X = 36;
+    private static final double CONTACT_RANGE_Y = 50;
+    /** 피격 후 무적 시간. 깜빡임 연출과 동일 길이. */
+    private static final long IFRAME_MS = 800;
+
     private final String id;
     private final double spawnX;
     private final double spawnY;
     private final ObjectMapper json;
     private final IntSupplier monsterIdGen;
+    private volatile CombatListener combatListener = null;
+    /** (playerId, monsterId) → 마지막 피격 시각. 몬스터 공격 간격 관리. */
+    private final Map<Long, Long> lastContactHitAt = new ConcurrentHashMap<>();
+
+    public void setCombatListener(CombatListener listener) { this.combatListener = listener; }
+
+    private static long pairKey(int playerId, int monsterId) {
+        return ((long) playerId << 32) | (monsterId & 0xFFFFFFFFL);
+    }
     private final Map<Integer, Player> players = new ConcurrentHashMap<>();
     private final Map<Integer, Monster> monsters = new ConcurrentHashMap<>();
     private final List<SpawnPoint> spawnPoints = new ArrayList<>();
@@ -63,6 +78,8 @@ public final class GameMap {
     public void removePlayer(int playerId) {
         if (players.remove(playerId) != null) {
             log.info("맵[{}] 퇴장: playerId={}, 현재 인원={}", id, playerId, players.size());
+            // 이 플레이어의 접촉 기록 제거 (key 상위 32비트가 playerId)
+            lastContactHitAt.keySet().removeIf(k -> (int) (k >>> 32) == playerId);
         }
     }
 
@@ -130,6 +147,30 @@ public final class GameMap {
 
     public void tick(long dtMs) {
         for (Monster m : monsters.values()) m.update(dtMs);
+
+        // 피격 판정: 살아있는 플레이어 × 공격형 살아있는 몬스터의 AABB 겹침.
+        long tickNow = System.currentTimeMillis();
+        for (Player p : players.values()) {
+            if (p.isDead() || p.isInvulnerable(tickNow)) continue;
+            for (Monster m : monsters.values()) {
+                if (m.isDead() || m.attackDamage() <= 0) continue;
+                if (Math.abs(m.x() - p.x()) > CONTACT_RANGE_X) continue;
+                if (Math.abs(m.y() - p.y()) > CONTACT_RANGE_Y) continue;
+                // 공격 간격 체크: 같은 몬스터가 너무 자주 때리지 않도록.
+                long key = pairKey(p.id(), m.id());
+                Long last = lastContactHitAt.get(key);
+                if (last != null && tickNow - last < m.attackIntervalMs()) continue;
+                int applied = p.takeDamage(m.attackDamage(), tickNow, IFRAME_MS);
+                if (applied <= 0) continue;
+                lastContactHitAt.put(key, tickNow);
+                CombatListener cl = combatListener;
+                if (cl != null) cl.onPlayerDamaged(p, m, applied);
+                if (p.isDead() && cl != null) {
+                    cl.onPlayerDied(p, m);
+                    break; // 이번 플레이어는 더 맞을 수 없음.
+                }
+            }
+        }
 
         // 드롭 아이템 만료(기본 60초) 제거
         long expireNow = System.currentTimeMillis();

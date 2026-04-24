@@ -34,7 +34,10 @@ public final class Player {
     private volatile String facing = "right";
     private volatile int level = 1;
     private volatile int exp = 0;
+    private volatile int hp = 0;
     private volatile int mp = 0;
+    /** 무적 시간 종료 시각(ms). 이 값보다 과거 시각 피격만 유효. */
+    private volatile long invulnerableUntil = 0;
     private final Inventory inventory = new Inventory();
     private final Equipment equipment = new Equipment();
     /** 스킬 ID → 마지막 사용 시각(ms). 쿨다운 판정. 접근은 한 플레이어 스레드에서만. */
@@ -62,7 +65,10 @@ public final class Player {
     public String facing() { return facing; }
     public int level() { return level; }
     public int exp() { return exp; }
+    public int hp() { return hp; }
     public int mp() { return mp; }
+    public boolean isDead() { return hp <= 0; }
+    public boolean isInvulnerable(long now) { return now < invulnerableUntil; }
     public Inventory inventory() { return inventory; }
     public Equipment equipment() { return equipment; }
 
@@ -87,6 +93,26 @@ public final class Player {
     /** 로그인/레벨업 시 MP 를 최대치로 채운다. 현재 단계에서는 사망 시스템이 없어 간단 처리. */
     public synchronized void fullHealMp() {
         mp = effectiveStats().maxMp();
+    }
+
+    /** 로그인/부활 시 HP 를 최대치로 복구. */
+    public synchronized void fullHealHp() {
+        hp = effectiveStats().maxHp();
+    }
+
+    /**
+     * 몬스터 접촉 등으로 피해를 받는다.
+     *
+     * @return 실제 적용된 피해량. 무적/사망 상태면 0.
+     */
+    public synchronized int takeDamage(int amount, long now, long iframeMs) {
+        if (amount <= 0) return 0;
+        if (hp <= 0) return 0;
+        if (now < invulnerableUntil) return 0;
+        int applied = Math.min(hp, amount);
+        hp -= applied;
+        invulnerableUntil = now + iframeMs;
+        return applied;
     }
 
     /** 쿨다운 체크 + 통과 시 현재 시각 기록. 한 번의 원자 연산으로 중복 사용 방지. */

@@ -19,13 +19,18 @@ public record SpawnPoint(
         int maxHp,
         int expReward,
         DropTable dropTable,
-        long respawnDelayMs
+        long respawnDelayMs,
+        /** 접촉 공격력. 0 이면 비공격 몬스터. Phase N. */
+        int attackDamage,
+        /** 같은 플레이어에게 연속 공격 가능한 최소 간격(ms). */
+        long attackIntervalMs
 ) {
 
     public Monster create(IntSupplier idGen) {
         return new Monster(
                 idGen.getAsInt(), template,
-                spawnX, groundY, minX, maxX, speed, maxHp
+                spawnX, groundY, minX, maxX, speed,
+                maxHp, attackDamage, attackIntervalMs
         );
     }
 }

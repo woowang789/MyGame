@@ -125,8 +125,8 @@ public final class Packets {
      */
     public record EquipmentPacket(int playerId, java.util.Map<String, String> slots) {}
 
-    /** 최종 스탯(장비 포함) 알림. 본인에게만 전송. 현재 mp 포함. */
-    public record StatsPacket(int maxHp, int maxMp, int attack, int speed, int currentMp) {}
+    /** 최종 스탯(장비 포함) 알림. 본인에게만 전송. 현재 hp/mp 포함. */
+    public record StatsPacket(int maxHp, int maxMp, int attack, int speed, int currentHp, int currentMp) {}
 
     // Phase M — 스킬
 
@@ -135,4 +135,21 @@ public final class Packets {
 
     /** 스킬 발동 브로드캐스트. 맵 내 모든 클라가 이펙트 렌더링. */
     public record SkillUsedPacket(int playerId, String skillId, String dir) {}
+
+    // Phase N — 피격
+
+    /**
+     * 플레이어 피격 브로드캐스트. 공격자(attackerId)가 몬스터이면 음수(-monsterId).
+     * currentHp 는 남은 HP, dmg 는 이번 타격으로 들어간 피해량.
+     */
+    public record PlayerDamagedPacket(int playerId, int dmg, int currentHp, int maxHp, int attackerId) {}
+
+    /** 플레이어 사망 브로드캐스트. 클라는 스프라이트를 회색/반투명으로 표시. */
+    public record PlayerDiedPacket(int playerId) {}
+
+    /**
+     * 플레이어 리스폰 브로드캐스트. mapId 가 바뀔 수 있어 맵 이동과 유사하게 취급.
+     * 본인에게는 HP/MP 가 찬 상태로 STATS 도 별도 송신한다.
+     */
+    public record PlayerRespawnedPacket(int playerId, String mapId, double x, double y, int hp) {}
 }

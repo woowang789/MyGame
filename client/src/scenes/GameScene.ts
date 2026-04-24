@@ -222,6 +222,9 @@ export class GameScene extends Phaser.Scene {
     this.network.on('EQUIPMENT', (p) => this.onEquipment(p));
     this.network.on('STATS', (p) => this.onStats(p));
     this.network.on('SKILL_USED', (p) => this.onSkillUsed(p));
+    this.network.on('PLAYER_DAMAGED', (p) => this.onPlayerDamaged(p));
+    this.network.on('PLAYER_DIED', (p) => this.onPlayerDied(p));
+    this.network.on('PLAYER_RESPAWN', (p) => this.onPlayerRespawn(p));
     this.network.on('ERROR', (p) => {
       console.warn('[Server ERROR]', p.message);
       this.appendChatLog('sys', `[오류] ${p.message}`);
@@ -371,13 +374,126 @@ export class GameScene extends Phaser.Scene {
     const attack = p.attack as number;
     const maxHp = p.maxHp as number;
     const maxMp = p.maxMp as number;
+    const currentHp = p.currentHp as number;
     const currentMp = p.currentMp as number;
     const statsEl = document.getElementById('eq-stats');
     if (statsEl) statsEl.textContent = `ATK ${attack} · MAXHP ${maxHp}`;
+    const hpText = document.getElementById('hp-text');
+    if (hpText) hpText.textContent = `${currentHp} / ${maxHp}`;
+    const hpFill = document.getElementById('hp-bar-fill');
+    if (hpFill) hpFill.style.width = `${maxHp > 0 ? (100 * currentHp) / maxHp : 0}%`;
     const mpText = document.getElementById('mp-text');
     if (mpText) mpText.textContent = `${currentMp} / ${maxMp}`;
     const mpFill = document.getElementById('mp-bar-fill');
     if (mpFill) mpFill.style.width = `${maxMp > 0 ? (100 * currentMp) / maxMp : 0}%`;
+  }
+
+  private onPlayerDamaged(p: Packet): void {
+    const playerId = p.playerId as number;
+    const dmg = p.dmg as number;
+    const currentHp = p.currentHp as number;
+    const maxHp = p.maxHp as number;
+    // 본인은 STATS 패킷이 별도로 오므로 바 갱신은 거기에 맡긴다. 시각 효과만.
+    const x = playerId === this.myId
+      ? this.player.x
+      : this.remotes.get(playerId)?.sprite.x ?? 0;
+    const y = playerId === this.myId
+      ? this.player.y
+      : this.remotes.get(playerId)?.sprite.y ?? 0;
+    this.spawnDamageNumber(x, y - 28, dmg);
+    if (playerId === this.myId) {
+      this.flashPlayerDamage();
+      // 본인 HP 바를 즉시 반영(STATS 패킷 지연 대비).
+      const hpText = document.getElementById('hp-text');
+      if (hpText) hpText.textContent = `${currentHp} / ${maxHp}`;
+      const hpFill = document.getElementById('hp-bar-fill');
+      if (hpFill) hpFill.style.width = `${maxHp > 0 ? (100 * currentHp) / maxHp : 0}%`;
+    }
+  }
+
+  private onPlayerDied(p: Packet): void {
+    const playerId = p.playerId as number;
+    if (playerId === this.myId) {
+      this.showDeathOverlay();
+      this.player.setTint(0x555555);
+      this.player.setAlpha(0.5);
+    } else {
+      const r = this.remotes.get(playerId);
+      if (r) {
+        r.sprite.setTint(0x555555);
+        r.sprite.setAlpha(0.5);
+      }
+    }
+  }
+
+  private onPlayerRespawn(p: Packet): void {
+    const playerId = p.playerId as number;
+    const x = p.x as number;
+    const y = p.y as number;
+    if (playerId === this.myId) {
+      this.hideDeathOverlay();
+      this.player.clearTint();
+      this.player.setAlpha(1);
+      this.player.setVelocity(0, 0);
+      this.player.setPosition(x, y);
+    } else {
+      const r = this.remotes.get(playerId);
+      if (r) {
+        r.sprite.clearTint();
+        r.sprite.setAlpha(1);
+        r.setTarget(x, y);
+      }
+    }
+  }
+
+  private flashPlayerDamage(): void {
+    this.player.setTint(0xff4444);
+    this.tweens.add({
+      targets: this.player,
+      alpha: { from: 0.3, to: 1 },
+      duration: 120,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => {
+        if (!this.player.active) return;
+        this.player.clearTint();
+        this.player.setAlpha(1);
+      }
+    });
+  }
+
+  private spawnDamageNumber(x: number, y: number, dmg: number): void {
+    const txt = this.add
+      .text(x, y, `-${dmg}`, { fontSize: '14px', color: '#ff6b6b', fontStyle: 'bold' })
+      .setOrigin(0.5, 1)
+      .setStroke('#3a0a0a', 3);
+    this.tweens.add({
+      targets: txt,
+      y: y - 24,
+      alpha: 0,
+      duration: 700,
+      onComplete: () => txt.destroy()
+    });
+  }
+
+  private showDeathOverlay(): void {
+    const overlay = document.getElementById('death-overlay');
+    const cd = document.getElementById('respawn-countdown');
+    if (!overlay || !cd) return;
+    overlay.classList.add('active');
+    const startAt = performance.now();
+    const totalMs = 3000;
+    const tick = () => {
+      if (!overlay.classList.contains('active')) return;
+      const remaining = Math.max(0, totalMs - (performance.now() - startAt));
+      cd.textContent = (remaining / 1000).toFixed(1);
+      if (remaining > 0) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  private hideDeathOverlay(): void {
+    document.getElementById('death-overlay')?.classList.remove('active');
   }
 
   private onSkillUsed(p: Packet): void {

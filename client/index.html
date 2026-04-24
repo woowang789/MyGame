@@ -235,6 +235,68 @@
         background: linear-gradient(90deg, #4aa3ff, #7bd4ff);
         transition: width 120ms linear;
       }
+      /* HP 바는 MP 와 같은 구조 + 붉은 그라데이션 */
+      #hp-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        font-size: 11px;
+        color: #ffb0b0;
+      }
+      #hp-bar-bg {
+        flex: 1;
+        height: 8px;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid #553333;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      #hp-bar-fill {
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, #ff4a4a, #ff7a7a);
+        transition: width 120ms linear;
+      }
+
+      /* 사망 오버레이 */
+      #death-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 90;
+      }
+      #death-overlay.active { display: flex; }
+      #death-overlay .panel {
+        text-align: center;
+        padding: 28px 40px;
+        background: rgba(30, 0, 0, 0.85);
+        border: 1px solid #5a2222;
+        border-radius: 10px;
+        color: #fff;
+      }
+      #death-overlay .title {
+        font-size: 28px;
+        font-weight: 700;
+        color: #ff6b6b;
+        letter-spacing: 3px;
+      }
+      #death-overlay .sub {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #aaa;
+      }
+      #death-overlay .countdown {
+        margin-top: 14px;
+        font-size: 32px;
+        font-weight: 700;
+        color: #ffeb8a;
+      }
     </style>
   </head>
   <body>
@@ -278,10 +340,22 @@
       <div class="skill" data-id="recovery">
         <span class="kbd">3</span><span class="sname">리커버리</span><span class="cd" id="cd-recovery"></span>
       </div>
+      <div id="hp-row">
+        <span>HP</span>
+        <div id="hp-bar-bg"><div id="hp-bar-fill"></div></div>
+        <span id="hp-text">0 / 0</span>
+      </div>
       <div id="mp-row">
         <span>MP</span>
         <div id="mp-bar-bg"><div id="mp-bar-fill"></div></div>
         <span id="mp-text">0 / 0</span>
+      </div>
+    </div>
+    <div id="death-overlay">
+      <div class="panel">
+        <div class="title">사망</div>
+        <div class="sub">잠시 후 부활합니다...</div>
+        <div class="countdown" id="respawn-countdown">3.0</div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

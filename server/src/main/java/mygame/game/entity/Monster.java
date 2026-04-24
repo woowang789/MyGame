@@ -18,6 +18,8 @@ public final class Monster {
     private final double speed;
 
     private final int maxHp;
+    private final int attackDamage;
+    private final long attackIntervalMs;
     private double x;
     private double vx;
     private int hp;
@@ -26,7 +28,7 @@ public final class Monster {
     public Monster(int id, String template,
                    double spawnX, double groundY,
                    double minX, double maxX, double speed,
-                   int maxHp) {
+                   int maxHp, int attackDamage, long attackIntervalMs) {
         this.id = id;
         this.template = template;
         this.x = spawnX;
@@ -36,6 +38,8 @@ public final class Monster {
         this.speed = speed;
         this.maxHp = maxHp;
         this.hp = maxHp;
+        this.attackDamage = attackDamage;
+        this.attackIntervalMs = attackIntervalMs;
     }
 
     public int id() { return id; }
@@ -49,6 +53,8 @@ public final class Monster {
     public MonsterState state() { return state; }
     public int hp() { return hp; }
     public int maxHp() { return maxHp; }
+    public int attackDamage() { return attackDamage; }
+    public long attackIntervalMs() { return attackIntervalMs; }
     public boolean isDead() { return hp <= 0; }
 
     public void setX(double x) { this.x = x; }

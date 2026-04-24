@@ -18,6 +18,8 @@ public final class World {
     private static final int SNAIL_HP = 50;
     private static final int SNAIL_EXP = 15;
     private static final long SNAIL_RESPAWN_MS = 5000;
+    private static final int SNAIL_ATK = 10;
+    private static final long SNAIL_ATK_INTERVAL_MS = 1500;
 
     /** 달팽이 드롭: 빨간 포션 50%, 껍질 40%, 파란 포션 10%, 나무 검 5%, 가죽 모자 3%. */
     private static final DropTable SNAIL_DROPS = DropTable.of(
@@ -33,6 +35,12 @@ public final class World {
     private final AtomicInteger itemIdSeq = new AtomicInteger(1);
     /** 전역 플레이어 이름 → Player. 귓속말(맵 경계 넘는 메시지) 라우팅에 사용. */
     private final Map<String, Player> playersByName = new ConcurrentHashMap<>();
+    private volatile CombatListener combatListener = null;
+
+    public void setCombatListener(CombatListener listener) {
+        this.combatListener = listener;
+        for (GameMap map : maps.values()) map.setCombatListener(listener);
+    }
 
     public World(ObjectMapper json) {
         GameMap henesys = new GameMap("henesys", 80, 100, json, monsterIdSeq::getAndIncrement);
@@ -50,7 +58,8 @@ public final class World {
             double spawnX = minX + step * i;
             map.registerSpawn(new SpawnPoint(
                     "snail", spawnX, GROUND_Y, minX, maxX, speed,
-                    SNAIL_HP, SNAIL_EXP, SNAIL_DROPS, SNAIL_RESPAWN_MS
+                    SNAIL_HP, SNAIL_EXP, SNAIL_DROPS, SNAIL_RESPAWN_MS,
+                    SNAIL_ATK, SNAIL_ATK_INTERVAL_MS
             ));
         }
     }
