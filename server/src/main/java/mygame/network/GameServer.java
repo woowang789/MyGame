@@ -549,7 +549,8 @@ public final class GameServer extends WebSocketServer {
         String dir = (req.dir() == null || req.dir().isBlank()) ? player.facing() : req.dir();
         // 데미지 = 최종 스탯의 attack (Decorator 체인: 레벨 + 장비 합산).
         int damage = player.effectiveStats().attack();
-        for (Monster m : AttackBox.monstersInFront(player, map, dir, 1.0)) {
+        // 기본 공격은 1마리만. 범위 내 가장 가까운 몬스터를 고른다.
+        for (Monster m : AttackBox.nearestInFront(player, map, dir, 1.0, 1)) {
             combatService.damageMonster(map, player, m, damage);
         }
     }
