@@ -1,5 +1,6 @@
 import { ITEM_NAMES } from '../entities/DroppedItemSprite';
 import { formatBonus, getItemMeta, ItemType } from '../data/ItemMeta';
+import { loadOrder, mergeOrder, saveOrder } from '../data/InventoryOrder';
 
 /* ITEM_NAMES 가 HudView 내부에서 equipment 슬롯 렌더에만 쓰이므로 유지. */
 
@@ -11,6 +12,11 @@ const TAB_LABEL: Record<ItemType, string> = {
   CONSUMABLE: '소비',
   ETC: '기타'
 };
+
+/** 인벤/장비 슬롯에서 GameScene 이 처리할 사용자 액션. */
+export type InventoryAction =
+  | { kind: 'equip'; templateId: string }
+  | { kind: 'unequip'; slot: string };
 
 /**
  * HUD DOM 조작 전담.
@@ -48,6 +54,10 @@ export class HudView {
   private inventoryTab: ItemType = 'EQUIPMENT';
   /** 마지막 인벤토리 스냅샷. 탭 전환 시 서버 패킷 없이 재렌더하기 위해 보관. */
   private lastInventory: Record<string, number> = {};
+  /** 드래그 · 저장 키 구분용. setAccountKey 로 로그인 직후 주입. */
+  private accountKey = 'default';
+  /** 인벤 슬롯에서 발생한 사용자 액션을 GameScene 으로 전달. */
+  private inventoryActionHandler: ((action: InventoryAction) => void) | null = null;
 
   updateStats(stats: {
     attack: number;
@@ -112,22 +122,28 @@ export class HudView {
     if (!grid) return;
 
     // 현 탭의 아이템만 추려낸다. (meso 는 ETC 이지만 인벤토리 snapshot 에 포함되지 않음)
-    const entries = Object.entries(this.lastInventory)
+    const tabItems = Object.entries(this.lastInventory)
       .filter(([, n]) => n > 0)
       .filter(([id]) => getItemMeta(id).type === this.inventoryTab);
 
-    const slotCount = Math.max(INVENTORY_MIN_SLOTS, entries.length);
+    // 저장된 슬롯 순서를 복원. 획득했지만 저장 시점에 없던 id 는 뒤에 붙는다.
+    const currentIds = tabItems.map(([id]) => id);
+    const orderedIds = mergeOrder(loadOrder(this.accountKey, this.inventoryTab), currentIds);
+    const qtyOf = Object.fromEntries(tabItems);
+    const slotCount = Math.max(INVENTORY_MIN_SLOTS, orderedIds.length);
 
     const frag = document.createDocumentFragment();
     for (let i = 0; i < slotCount; i++) {
       const slot = document.createElement('div');
       slot.className = 'inv-slot';
-      const entry = entries[i];
-      if (entry) {
-        const [id, qty] = entry;
+      slot.dataset.slotIndex = String(i);
+      const id = orderedIds[i];
+      if (id) {
+        const qty = qtyOf[id] ?? 0;
         const meta = getItemMeta(id);
         slot.classList.add('filled');
         slot.dataset.itemId = id;
+        slot.draggable = true;
         const icon = document.createElement('div');
         icon.className = 'inv-icon';
         icon.style.background = `#${meta.color.toString(16).padStart(6, '0')}`;
@@ -142,6 +158,16 @@ export class HudView {
       frag.appendChild(slot);
     }
     grid.replaceChildren(frag);
+  }
+
+  /** GameScene 이 사용자 액션(장착/해제)을 받을 콜백을 등록. */
+  onInventoryAction(handler: (action: InventoryAction) => void): void {
+    this.inventoryActionHandler = handler;
+  }
+
+  /** 로그인 직후 저장소 네임스페이스를 계정 단위로 고정. */
+  setAccountKey(key: string): void {
+    this.accountKey = key;
   }
 
   /**
@@ -192,6 +218,83 @@ export class HudView {
       if (!tooltip.classList.contains('hidden')) this.positionTooltip(tooltip, e as MouseEvent);
     });
     grid.addEventListener('mouseleave', () => tooltip.classList.add('hidden'));
+
+    // 더블클릭: 장비 탭에서 장착.
+    grid.addEventListener('dblclick', (e) => {
+      const slot = (e.target as HTMLElement).closest('.inv-slot.filled') as HTMLElement | null;
+      if (!slot) return;
+      const id = slot.dataset.itemId;
+      if (!id) return;
+      if (getItemMeta(id).type === 'EQUIPMENT') {
+        this.inventoryActionHandler?.({ kind: 'equip', templateId: id });
+      }
+      // CONSUMABLE·ETC 더블클릭은 Phase D 에서 처리(소비/사용).
+    });
+
+    // 드래그 재정렬: 현재 탭에서 source→target 슬롯의 id 순서 swap 후 저장·재렌더.
+    let dragSrcIndex: number | null = null;
+    grid.addEventListener('dragstart', (e) => {
+      const slot = (e.target as HTMLElement).closest('.inv-slot.filled') as HTMLElement | null;
+      if (!slot) { e.preventDefault(); return; }
+      dragSrcIndex = Number(slot.dataset.slotIndex);
+      // 커스텀 데이터 없이도 동작하지만 일부 브라우저는 dataTransfer 가 필요.
+      e.dataTransfer?.setData('text/plain', slot.dataset.itemId ?? '');
+      e.dataTransfer!.effectAllowed = 'move';
+      tooltip.classList.add('hidden');
+    });
+    grid.addEventListener('dragover', (e) => {
+      if (dragSrcIndex === null) return;
+      const slot = (e.target as HTMLElement).closest('.inv-slot') as HTMLElement | null;
+      if (!slot) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+    });
+    grid.addEventListener('drop', (e) => {
+      if (dragSrcIndex === null) return;
+      const slot = (e.target as HTMLElement).closest('.inv-slot') as HTMLElement | null;
+      if (!slot) return;
+      e.preventDefault();
+      const destIndex = Number(slot.dataset.slotIndex);
+      this.reorderTabSlots(dragSrcIndex, destIndex);
+      dragSrcIndex = null;
+    });
+    grid.addEventListener('dragend', () => {
+      dragSrcIndex = null;
+    });
+
+    // 장비 카드의 슬롯 더블클릭: 해당 슬롯 해제.
+    const bindEquipUnequip = (elId: string, slot: string) => {
+      document.getElementById(elId)?.addEventListener('dblclick', () => {
+        this.inventoryActionHandler?.({ kind: 'unequip', slot });
+      });
+    };
+    bindEquipUnequip('eq-weapon', 'WEAPON');
+    bindEquipUnequip('eq-hat', 'HAT');
+    bindEquipUnequip('eq-armor', 'ARMOR');
+  }
+
+  /**
+   * 현재 탭의 슬롯 순서에서 src → dest 로 이동.
+   * 두 인덱스 중 하나가 빈 슬롯이면 id 를 밀어넣기/빼기 조합으로 처리하고,
+   * 둘 다 채워진 경우 src 앞으로 dest 가 오도록 splice.
+   */
+  private reorderTabSlots(src: number, dest: number): void {
+    if (src === dest) return;
+    const tabItems = Object.entries(this.lastInventory)
+      .filter(([, n]) => n > 0)
+      .filter(([id]) => getItemMeta(id).type === this.inventoryTab);
+    const currentIds = tabItems.map(([id]) => id);
+    const ordered = mergeOrder(loadOrder(this.accountKey, this.inventoryTab), currentIds);
+    // 빈 뒤쪽 슬롯까지 포함해 길이를 확보.
+    const slotCount = Math.max(INVENTORY_MIN_SLOTS, ordered.length);
+    const arr: (string | null)[] = [];
+    for (let i = 0; i < slotCount; i++) arr.push(ordered[i] ?? null);
+    const [moved] = arr.splice(src, 1);
+    arr.splice(dest, 0, moved);
+    // null 뒤에 아이템이 남아있을 수 있으므로 압축하지 않고 그대로 저장.
+    const compact = arr.filter((x): x is string => x !== null);
+    saveOrder(this.accountKey, this.inventoryTab, compact);
+    this.renderInventoryGrid();
   }
 
   /** 툴팁을 커서 근처에 배치하되 화면 밖으로 나가지 않게 clamp. */

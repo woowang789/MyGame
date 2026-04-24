@@ -129,9 +129,20 @@ export class GameScene extends Phaser.Scene {
     };
 
     this.hud.setPlayerName(this.playerName);
+    // localStorage 네임스페이스: 캐릭터 이름 단위로 슬롯 순서를 분리.
+    this.hud.setAccountKey(this.playerName);
     this.setupChatInput();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
     this.hud.bindInventoryInteractions();
+    // 인벤/장비 슬롯의 더블클릭 → 서버 패킷으로 위임.
+    this.hud.onInventoryAction((action) => {
+      if (!this.network.isOpen) return;
+      if (action.kind === 'equip') {
+        this.network.send({ type: 'EQUIP', templateId: action.templateId });
+      } else if (action.kind === 'unequip') {
+        this.network.send({ type: 'UNEQUIP', slot: action.slot });
+      }
+    });
 
     this.mapController = new MapController(this, this.player);
     this.mapController.loadMap(this.currentMapId);

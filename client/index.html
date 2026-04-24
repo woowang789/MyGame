@@ -445,10 +445,14 @@
         border-color: rgba(255, 255, 255, 0.18);
         background: rgba(0, 0, 0, 0.55);
       }
+      #inventory-window .inv-slot.filled {
+        cursor: grab;
+      }
       #inventory-window .inv-slot.filled:hover {
         border-color: #ffeb8a;
         box-shadow: 0 0 0 1px rgba(255, 235, 138, 0.25);
       }
+      #inventory-window .inv-slot.filled:active { cursor: grabbing; }
       /*
        * 아이콘: Phaser 의 DroppedItemSprite 가 그리는 다이아몬드를 CSS 로 흉내낸다.
        * 실제 이미지 에셋이 생기기 전까지는 "색상 + 모양" 으로 아이템을 구분.
@@ -540,7 +544,7 @@
     <div id="inventory-window" class="hidden">
       <div class="header">
         <span class="title">인벤토리</span>
-        <span class="hint">I 열기/닫기 · Esc 닫기</span>
+        <span class="hint">I 열기/닫기 · 더블클릭 장착 · 드래그 정렬</span>
         <button id="inv-close" class="close-btn" type="button" aria-label="닫기">×</button>
       </div>
       <div class="tabs" id="inv-tabs">
@@ -585,7 +589,7 @@
         <div class="slot"><span class="name">갑옷</span><span class="val" id="eq-armor">-</span></div>
         <div class="stats-line" id="eq-stats">ATK 0 · MAXHP 0</div>
         <div class="meso" id="meso-text">0 메소</div>
-        <div class="hint">Q 첫 장비 착용 · E 전부 해제</div>
+        <div class="hint">슬롯 더블클릭 해제 · Q 첫 장비 착용 · E 전부 해제</div>
       </div>
 
       <div class="section">
