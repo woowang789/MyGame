@@ -18,33 +18,60 @@
         align-items: center;
         min-height: 100vh;
       }
+      /*
+       * HUD 가이드: 눈에 띄지 않게 좌상단에 옅게. 포커스되면 또렷해지지만 평상시에는
+       * 보조 정보로만 보이게 한다.
+       */
       #hud {
         position: fixed;
-        top: 12px;
-        left: 12px;
-        font-size: 13px;
-        opacity: 0.85;
+        top: 10px;
+        left: 10px;
+        font-size: 11px;
+        color: #8a8a96;
+        opacity: 0.6;
         pointer-events: none;
+        letter-spacing: 0.2px;
       }
+
+      /*
+       * 채팅 박스: 기본은 얇게(입력줄만), Enter 로 포커스되면 로그를 펼친다.
+       * 새 메시지가 오면 잠시 "ghost" 상태로 로그가 반투명으로 드러났다가 페이드.
+       * 실제 포커스 시에는 .expanded 로 고정되어 사라지지 않는다.
+       */
       #chat-box {
         position: fixed;
         left: 50%;
         transform: translateX(-50%);
-        bottom: 16px;
+        bottom: 14px;
         width: 520px;
         max-width: 90vw;
-        background: rgba(0, 0, 0, 0.55);
         color: #fff;
-        padding: 8px 10px;
-        border-radius: 6px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        pointer-events: none;                    /* 기본은 이벤트 통과 (게임 입력 보호) */
       }
       #chat-log {
-        height: 120px;
+        max-height: 140px;
         overflow-y: auto;
         font-size: 12px;
         line-height: 1.5;
-        margin-bottom: 6px;
+        padding: 6px 10px;
+        margin-bottom: 4px;
+        background: rgba(0, 0, 0, 0);
+        border-radius: 6px;
+        opacity: 0;
+        transition: opacity 240ms ease, background 240ms ease, max-height 200ms ease;
+        pointer-events: none;
+      }
+      #chat-box.expanded #chat-log,
+      #chat-box.ghost #chat-log {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.55);
+      }
+      #chat-box.expanded #chat-log {
+        pointer-events: auto;
+      }
+      #chat-box.ghost #chat-log {
+        opacity: 0.75;                           /* 일시 표시: 포커스 없이 반투명 */
       }
       #chat-log .sys { color: #9fdcff; }
       #chat-log .whisper { color: #ffb4ff; }
@@ -52,15 +79,23 @@
       #chat-input {
         width: 100%;
         box-sizing: border-box;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(0, 0, 0, 0.35);
         color: #fff;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 4px;
-        padding: 6px 8px;
-        font-size: 13px;
+        padding: 5px 8px;
+        font-size: 12px;
         outline: none;
+        opacity: 0.45;
+        transition: opacity 160ms ease, background 160ms ease, border-color 160ms ease;
+        pointer-events: auto;
       }
-      #chat-input:focus { border-color: #ffeb8a; }
+      #chat-input:hover { opacity: 0.8; }
+      #chat-box.expanded #chat-input {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.7);
+        border-color: #ffeb8a;
+      }
 
       /* Phase L — 로그인 화면 */
       #login-root {
@@ -136,63 +171,116 @@
       }
       #login-msg.ok { color: #7aff9c; }
 
-      /* Phase I — 장비 HUD */
-      #equip-box {
+      /*
+       * 플레이어 카드(우측): 이름·레벨·EXP·장비·스탯·메소·HP/MP·스킬을 한 카드에 모았다.
+       * 이전 #equip-box / #skill-box 두 패널이 분산되어 있던 HUD 를 통합한 결과.
+       */
+      #player-card {
         position: fixed;
         right: 12px;
-        top: 132px;
-        width: 180px;
-        background: rgba(0, 0, 0, 0.55);
+        top: 12px;
+        width: 220px;
+        background: rgba(0, 0, 0, 0.58);
         color: #fff;
-        padding: 8px 10px;
-        border-radius: 6px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
         font-size: 12px;
-        line-height: 1.6;
+        line-height: 1.55;
       }
-      #equip-box .title {
-        color: #ffc64a;
+      #player-card .section + .section {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      #player-card .title {
         font-weight: 600;
+        font-size: 11px;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        color: #ffc64a;
         margin-bottom: 4px;
       }
-      #equip-box .slot { display: flex; justify-content: space-between; }
-      #equip-box .slot .name { color: #9fdcff; }
-      #equip-box .slot .val { color: #fff; }
-      #equip-box .stats {
-        margin-top: 6px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255,255,255,0.1);
+      #player-card .name-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      #player-card .pname {
+        font-weight: 700;
+        font-size: 14px;
+        color: #ffeb8a;
+      }
+      #player-card .plevel {
+        font-size: 11px;
         color: #aee1ff;
       }
-      #equip-box .hint {
-        margin-top: 6px;
+      /* EXP/HP/MP 공용 바 스타일. 높이·테두리 한 곳에서 관리. */
+      #player-card .bar-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        margin-top: 4px;
+      }
+      #player-card .bar-row .label {
+        width: 22px;
+        color: #aab;
+      }
+      #player-card .bar-bg {
+        flex: 1;
+        height: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      #player-card .bar-fill {
+        height: 100%;
+        width: 0;
+        transition: width 120ms linear;
+      }
+      #player-card .bar-fill.exp { background: linear-gradient(90deg, #ffc64a, #ffe68a); }
+      #player-card .bar-fill.hp  { background: linear-gradient(90deg, #ff4a4a, #ff7a7a); }
+      #player-card .bar-fill.mp  { background: linear-gradient(90deg, #4aa3ff, #7bd4ff); }
+      #player-card .bar-row .val {
+        width: 70px;
+        text-align: right;
+        color: #ddd;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #player-card .slot {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+      }
+      #player-card .slot .name { color: #9fdcff; }
+      #player-card .slot .val  { color: #fff; }
+      #player-card .meso {
+        color: #ffd84a;
+        text-align: right;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      #player-card .stats-line {
+        color: #aee1ff;
+        font-size: 11px;
+      }
+      #player-card .hint {
+        margin-top: 4px;
         font-size: 10px;
         color: #888;
       }
 
-      /* Phase M — 스킬 HUD */
-      #skill-box {
-        position: fixed;
-        right: 12px;
-        top: 320px;
-        width: 200px;
-        background: rgba(0, 0, 0, 0.55);
-        color: #fff;
-        padding: 8px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-      }
-      #skill-box .title {
-        color: #ff8aff;
-        font-weight: 600;
-        margin-bottom: 6px;
-      }
-      #skill-box .skill {
+      #player-card .skill {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 3px 0;
+        padding: 2px 0;
       }
-      #skill-box .skill .kbd {
+      #player-card .skill .kbd {
         display: inline-block;
         min-width: 16px;
         padding: 1px 4px;
@@ -203,62 +291,51 @@
         text-align: center;
         color: #ffeb8a;
       }
-      #skill-box .skill .sname { flex: 1; }
-      #skill-box .skill .cd {
+      #player-card .skill .sname { flex: 1; }
+      #player-card .skill .cd {
         font-size: 10px;
         color: #ff7a7a;
         min-width: 30px;
         text-align: right;
+        font-variant-numeric: tabular-nums;
       }
-      #skill-box .skill.cooling { opacity: 0.45; }
-      #mp-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 8px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255,255,255,0.1);
+      #player-card .skill.cooling { opacity: 0.45; }
+
+      /* 인벤토리 패널(좌측). 캔버스 내부 HUD 대신 DOM 으로 분리. */
+      #inventory-panel {
+        position: fixed;
+        left: 12px;
+        top: 42px;
+        width: 180px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 12px;
+        line-height: 1.55;
+        max-height: 70vh;
+        overflow-y: auto;
+      }
+      #inventory-panel .title {
+        font-weight: 600;
         font-size: 11px;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
         color: #aee1ff;
+        margin-bottom: 6px;
       }
-      #mp-bar-bg {
-        flex: 1;
-        height: 8px;
-        background: rgba(0,0,0,0.5);
-        border: 1px solid #3a3a55;
-        border-radius: 3px;
-        overflow: hidden;
-      }
-      #mp-bar-fill {
-        height: 100%;
-        width: 0;
-        background: linear-gradient(90deg, #4aa3ff, #7bd4ff);
-        transition: width 120ms linear;
-      }
-      /* HP 바는 MP 와 같은 구조 + 붉은 그라데이션 */
-      #hp-row {
+      #inventory-panel .row {
         display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 8px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255,255,255,0.1);
-        font-size: 11px;
-        color: #ffb0b0;
+        justify-content: space-between;
       }
-      #hp-bar-bg {
-        flex: 1;
-        height: 8px;
-        background: rgba(0,0,0,0.5);
-        border: 1px solid #553333;
-        border-radius: 3px;
-        overflow: hidden;
+      #inventory-panel .row .qty {
+        color: #ffeb8a;
+        font-variant-numeric: tabular-nums;
       }
-      #hp-bar-fill {
-        height: 100%;
-        width: 0;
-        background: linear-gradient(90deg, #ff4a4a, #ff7a7a);
-        transition: width 120ms linear;
+      #inventory-panel .empty {
+        color: #666;
+        font-style: italic;
       }
 
       /* 사망 오버레이 */
@@ -317,39 +394,74 @@
 
     <div id="hud">방향키 이동 · ↑ 점프/포털 · Space 공격 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
     <div id="game-root"></div>
+
     <div id="chat-box">
       <div id="chat-log"></div>
-      <input id="chat-input" type="text" placeholder="Enter 키로 채팅 시작, /w 닉네임 메시지 로 귓속말" maxlength="200" />
+      <input id="chat-input" type="text" placeholder="Enter 로 채팅 · /w 닉네임 메시지 로 귓속말" maxlength="200" />
     </div>
-    <div id="equip-box">
-      <div class="title">장비</div>
-      <div class="slot"><span class="name">무기</span><span class="val" id="eq-weapon">-</span></div>
-      <div class="slot"><span class="name">모자</span><span class="val" id="eq-hat">-</span></div>
-      <div class="slot"><span class="name">갑옷</span><span class="val" id="eq-armor">-</span></div>
-      <div class="stats" id="eq-stats">ATK 0 · MAXHP 0</div>
-      <div class="stats" id="meso-text" style="color:#ffd84a">0 메소</div>
-      <div class="hint">Q: 인벤 첫 장비 착용 · E: 전부 해제</div>
+
+    <!--
+      인벤토리 패널(좌측). 기존 캔버스 내부 HUD 를 대체.
+      항목은 GameScene 이 HudView.updateInventory 로 동적 갱신.
+    -->
+    <div id="inventory-panel">
+      <div class="title">인벤토리</div>
+      <div id="inv-list" class="list">
+        <div class="empty">(비어 있음)</div>
+      </div>
     </div>
-    <div id="skill-box">
-      <div class="title">스킬 (초보자)</div>
-      <div class="skill" data-id="power_strike">
-        <span class="kbd">1</span><span class="sname">파워 스트라이크</span><span class="cd" id="cd-power_strike"></span>
+
+    <!--
+      플레이어 카드(우측). 캐릭터 · EXP · 장비 · 스탯 · 메소 · HP/MP · 스킬을 한 카드에 통합.
+      각 섹션은 .section 래퍼로 감싸 구분선을 자동 부여.
+    -->
+    <div id="player-card">
+      <div class="section">
+        <div class="name-row">
+          <span class="pname" id="pc-name">-</span>
+          <span class="plevel" id="pc-level">Lv 1</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">EXP</span>
+          <div class="bar-bg"><div class="bar-fill exp" id="exp-bar-fill"></div></div>
+          <span class="val" id="exp-text">0 / 0</span>
+        </div>
       </div>
-      <div class="skill" data-id="triple_blow">
-        <span class="kbd">2</span><span class="sname">트리플 블로우</span><span class="cd" id="cd-triple_blow"></span>
+
+      <div class="section">
+        <div class="title">장비</div>
+        <div class="slot"><span class="name">무기</span><span class="val" id="eq-weapon">-</span></div>
+        <div class="slot"><span class="name">모자</span><span class="val" id="eq-hat">-</span></div>
+        <div class="slot"><span class="name">갑옷</span><span class="val" id="eq-armor">-</span></div>
+        <div class="stats-line" id="eq-stats">ATK 0 · MAXHP 0</div>
+        <div class="meso" id="meso-text">0 메소</div>
+        <div class="hint">Q 첫 장비 착용 · E 전부 해제</div>
       </div>
-      <div class="skill" data-id="recovery">
-        <span class="kbd">3</span><span class="sname">리커버리</span><span class="cd" id="cd-recovery"></span>
+
+      <div class="section">
+        <div class="bar-row">
+          <span class="label">HP</span>
+          <div class="bar-bg"><div class="bar-fill hp" id="hp-bar-fill"></div></div>
+          <span class="val" id="hp-text">0 / 0</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">MP</span>
+          <div class="bar-bg"><div class="bar-fill mp" id="mp-bar-fill"></div></div>
+          <span class="val" id="mp-text">0 / 0</span>
+        </div>
       </div>
-      <div id="hp-row">
-        <span>HP</span>
-        <div id="hp-bar-bg"><div id="hp-bar-fill"></div></div>
-        <span id="hp-text">0 / 0</span>
-      </div>
-      <div id="mp-row">
-        <span>MP</span>
-        <div id="mp-bar-bg"><div id="mp-bar-fill"></div></div>
-        <span id="mp-text">0 / 0</span>
+
+      <div class="section">
+        <div class="title">스킬 (초보자)</div>
+        <div class="skill" data-id="power_strike">
+          <span class="kbd">1</span><span class="sname">파워 스트라이크</span><span class="cd" id="cd-power_strike"></span>
+        </div>
+        <div class="skill" data-id="triple_blow">
+          <span class="kbd">2</span><span class="sname">트리플 블로우</span><span class="cd" id="cd-triple_blow"></span>
+        </div>
+        <div class="skill" data-id="recovery">
+          <span class="kbd">3</span><span class="sname">리커버리</span><span class="cd" id="cd-recovery"></span>
+        </div>
       </div>
     </div>
     <div id="death-overlay">
