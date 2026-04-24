@@ -1,6 +1,9 @@
-import { ITEM_NAMES } from '../entities/DroppedItemSprite';
+import { ITEM_COLORS, ITEM_NAMES } from '../entities/DroppedItemSprite';
 
 /* ITEM_NAMES 가 HudView 내부에서 equipment 슬롯 렌더에만 쓰이므로 유지. */
+
+/** 인벤토리 창의 기본 슬롯 수. 현재는 그리드 전면을 채우는 최소 용량. */
+const INVENTORY_MIN_SLOTS = 24;
 
 /**
  * HUD DOM 조작 전담.
@@ -72,31 +75,59 @@ export class HudView {
     this.setWidthPct('exp-bar-fill', toNext > 0 ? (100 * exp) / toNext : 0);
   }
 
-  /** 인벤토리 스냅샷을 좌측 패널에 렌더. 빈 경우 placeholder. */
+  /**
+   * 인벤토리 스냅샷을 그리드로 렌더. 기본 슬롯 수보다 아이템 수가 많으면
+   * 필요한 만큼 슬롯을 늘리고 스크롤에 맡긴다.
+   */
   updateInventory(items: Record<string, number>): void {
-    const list = document.getElementById('inv-list');
-    if (!list) return;
+    const grid = document.getElementById('inv-grid');
+    if (!grid) return;
     const entries = Object.entries(items).filter(([, n]) => n > 0);
-    if (entries.length === 0) {
-      list.innerHTML = '<div class="empty">(비어 있음)</div>';
-      return;
-    }
-    // DOM 을 한 번에 교체해 재렌더 부담 최소화.
+    const slotCount = Math.max(INVENTORY_MIN_SLOTS, entries.length);
+
     const frag = document.createDocumentFragment();
-    for (const [id, qty] of entries) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = ITEM_NAMES[id] ?? id;
-      const q = document.createElement('span');
-      q.className = 'qty';
-      q.textContent = String(qty);
-      row.appendChild(name);
-      row.appendChild(q);
-      frag.appendChild(row);
+    for (let i = 0; i < slotCount; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'inv-slot';
+      const entry = entries[i];
+      if (entry) {
+        const [id, qty] = entry;
+        slot.classList.add('filled');
+        slot.title = `${ITEM_NAMES[id] ?? id} × ${qty}`;
+        const icon = document.createElement('div');
+        icon.className = 'inv-icon';
+        const color = ITEM_COLORS[id];
+        if (color !== undefined) {
+          icon.style.background = `#${color.toString(16).padStart(6, '0')}`;
+        } else {
+          icon.style.background = '#666';
+        }
+        slot.appendChild(icon);
+        if (qty > 1) {
+          const q = document.createElement('span');
+          q.className = 'inv-qty';
+          q.textContent = String(qty);
+          slot.appendChild(q);
+        }
+      }
+      frag.appendChild(slot);
     }
-    list.replaceChildren(frag);
+    grid.replaceChildren(frag);
+  }
+
+  /** 인벤토리 창 열기/닫기/토글. 채팅 입력 중 I 를 눌러도 창이 뜨는 일을 피하려 외부에서 호출. */
+  openInventory(): void { this.setInventoryHidden(false); }
+  closeInventory(): void { this.setInventoryHidden(true); }
+  toggleInventory(): void {
+    const el = document.getElementById('inventory-window');
+    if (!el) return;
+    this.setInventoryHidden(!el.classList.contains('hidden'));
+  }
+  isInventoryOpen(): boolean {
+    return document.getElementById('inventory-window')?.classList.contains('hidden') === false;
+  }
+  private setInventoryHidden(hidden: boolean): void {
+    document.getElementById('inventory-window')?.classList.toggle('hidden', hidden);
   }
 
   updateEquipment(slots: Record<string, string>): void {

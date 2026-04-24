@@ -301,41 +301,109 @@
       }
       #player-card .skill.cooling { opacity: 0.45; }
 
-      /* 인벤토리 패널(좌측). 캔버스 내부 HUD 대신 DOM 으로 분리. */
-      #inventory-panel {
+      /*
+       * 인벤토리 창(플로팅): I 키로 토글. Esc 또는 X 버튼으로 닫기.
+       * 게임 위에 띄우지만 입력을 가로막지 않아 이동·공격·채팅이 병행 가능.
+       * 24칸 그리드(6열×4행) 기본, 아이템이 많아지면 세로 스크롤.
+       */
+      #inventory-window {
         position: fixed;
-        left: 12px;
-        top: 42px;
-        width: 180px;
-        background: rgba(0, 0, 0, 0.55);
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 320px;
+        background: rgba(16, 18, 28, 0.92);
         color: #fff;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
         font-size: 12px;
-        line-height: 1.55;
-        max-height: 70vh;
+        z-index: 50;
+      }
+      #inventory-window.hidden { display: none; }
+
+      #inventory-window .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        user-select: none;
+      }
+      #inventory-window .header .title {
+        font-weight: 700;
+        color: #ffeb8a;
+        letter-spacing: 0.4px;
+      }
+      #inventory-window .header .hint {
+        font-size: 10px;
+        color: #7a7a88;
+      }
+      #inventory-window .close-btn {
+        background: transparent;
+        color: #aaa;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        width: 22px;
+        height: 22px;
+        line-height: 1;
+        font-size: 13px;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      #inventory-window .close-btn:hover {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      #inventory-window .body {
+        padding: 10px;
+        max-height: 60vh;
         overflow-y: auto;
       }
-      #inventory-panel .title {
-        font-weight: 600;
-        font-size: 11px;
-        letter-spacing: 0.3px;
-        text-transform: uppercase;
-        color: #aee1ff;
-        margin-bottom: 6px;
+      #inventory-window .inv-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 6px;
       }
-      #inventory-panel .row {
-        display: flex;
-        justify-content: space-between;
+      #inventory-window .inv-slot {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px dashed rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        cursor: default;
       }
-      #inventory-panel .row .qty {
+      #inventory-window .inv-slot.filled {
+        border-style: solid;
+        border-color: rgba(255, 255, 255, 0.18);
+        background: rgba(0, 0, 0, 0.55);
+      }
+      #inventory-window .inv-slot.filled:hover {
+        border-color: #ffeb8a;
+        box-shadow: 0 0 0 1px rgba(255, 235, 138, 0.25);
+      }
+      /*
+       * 아이콘: Phaser 의 DroppedItemSprite 가 그리는 다이아몬드를 CSS 로 흉내낸다.
+       * 실제 이미지 에셋이 생기기 전까지는 "색상 + 모양" 으로 아이템을 구분.
+       */
+      #inventory-window .inv-icon {
+        position: absolute;
+        inset: 18%;
+        transform: rotate(45deg);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: 4px;
+      }
+      #inventory-window .inv-qty {
+        position: absolute;
+        right: 3px;
+        bottom: 2px;
+        font-size: 10px;
+        font-weight: 700;
         color: #ffeb8a;
+        text-shadow: 0 1px 0 #000;
         font-variant-numeric: tabular-nums;
-      }
-      #inventory-panel .empty {
-        color: #666;
-        font-style: italic;
       }
 
       /* 사망 오버레이 */
@@ -392,7 +460,7 @@
       </div>
     </div>
 
-    <div id="hud">방향키 이동 · ↑ 점프/포털 · Space 공격 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
+    <div id="hud">방향키 이동 · ↑ 점프/포털 · Space 공격 · I 인벤 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
     <div id="game-root"></div>
 
     <div id="chat-box">
@@ -401,13 +469,17 @@
     </div>
 
     <!--
-      인벤토리 패널(좌측). 기존 캔버스 내부 HUD 를 대체.
-      항목은 GameScene 이 HudView.updateInventory 로 동적 갱신.
+      인벤토리 창(플로팅). I 키로 토글, Esc/X 로 닫기.
+      슬롯 그리드는 HudView.updateInventory 가 동적 렌더한다.
     -->
-    <div id="inventory-panel">
-      <div class="title">인벤토리</div>
-      <div id="inv-list" class="list">
-        <div class="empty">(비어 있음)</div>
+    <div id="inventory-window" class="hidden">
+      <div class="header">
+        <span class="title">인벤토리</span>
+        <span class="hint">I 열기/닫기 · Esc 닫기</span>
+        <button id="inv-close" class="close-btn" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="body">
+        <div id="inv-grid" class="inv-grid"></div>
       </div>
     </div>
 

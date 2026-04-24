@@ -54,6 +54,8 @@ export class GameScene extends Phaser.Scene {
   private attackKey!: Phaser.Input.Keyboard.Key;
   private equipKey!: Phaser.Input.Keyboard.Key;
   private unequipKey!: Phaser.Input.Keyboard.Key;
+  private inventoryKey!: Phaser.Input.Keyboard.Key;
+  private escKey!: Phaser.Input.Keyboard.Key;
   private skillKeys!: Record<string, Phaser.Input.Keyboard.Key>;
   private myLabel!: Phaser.GameObjects.Text;
   private facing: 'left' | 'right' = 'right';
@@ -118,6 +120,8 @@ export class GameScene extends Phaser.Scene {
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.equipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.unequipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.inventoryKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.skillKeys = {
       power_strike: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       triple_blow: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
@@ -126,6 +130,7 @@ export class GameScene extends Phaser.Scene {
 
     this.hud.setPlayerName(this.playerName);
     this.setupChatInput();
+    document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
 
     this.mapController = new MapController(this, this.player);
     this.mapController.loadMap(this.currentMapId);
@@ -528,6 +533,14 @@ export class GameScene extends Phaser.Scene {
       for (const slot of Object.keys(this.equippedSlots)) {
         this.network.send({ type: 'UNEQUIP', slot });
       }
+    }
+
+    // I: 인벤토리 창 토글. Esc: 열려 있으면 닫기.
+    if (Phaser.Input.Keyboard.JustDown(this.inventoryKey)) {
+      this.hud.toggleInventory();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.escKey) && this.hud.isInventoryOpen()) {
+      this.hud.closeInventory();
     }
 
     // 1/2/3: 스킬 사용. 쿨다운 예측으로 중복 패킷 방지.
