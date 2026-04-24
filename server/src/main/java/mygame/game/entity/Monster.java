@@ -24,6 +24,9 @@ public final class Monster {
     private double vx;
     private int hp;
     private MonsterState state;
+    /** 넉백 종료 시각(ms, System.currentTimeMillis). 이 값 이전이면 state 대신 넉백 속도로 이동. */
+    private long knockbackUntilMs = 0;
+    private double knockbackVx = 0;
 
     public Monster(int id, String template,
                    double spawnX, double groundY,
@@ -72,7 +75,35 @@ public final class Monster {
         next.onEnter(this);
     }
 
+    /**
+     * 넉백 속도와 지속시간을 설정한다. 양수면 오른쪽, 음수면 왼쪽.
+     * 지속 중에는 state 의 update 대신 넉백 이동이 우선한다.
+     */
+    public void applyKnockback(double vx, long durationMs) {
+        this.knockbackVx = vx;
+        this.knockbackUntilMs = System.currentTimeMillis() + Math.max(0, durationMs);
+        this.vx = vx;
+    }
+
+    public boolean isKnockedBack(long now) { return now < knockbackUntilMs; }
+
     public void update(long dtMs) {
+        long now = System.currentTimeMillis();
+        if (now < knockbackUntilMs) {
+            // 넉백 구간: 배회 경계를 넘지 않도록 clamp 하고 이동 처리만 한다.
+            double nextX = x + knockbackVx * (dtMs / 1000.0);
+            nextX = Math.max(minX, Math.min(maxX, nextX));
+            this.x = nextX;
+            this.vx = knockbackVx;
+            return;
+        }
+        // 넉백이 방금 끝났으면 state 가 기대하는 속도로 복귀시킨다.
+        if (knockbackUntilMs != 0 && now >= knockbackUntilMs) {
+            knockbackUntilMs = 0;
+            knockbackVx = 0;
+            // Idle 로 돌려두면 다음 tick 에서 자연스럽게 새 Wander 를 시작한다.
+            transitionTo(new mygame.game.ai.IdleState());
+        }
         if (state != null) {
             state.update(this, dtMs);
         }

@@ -19,6 +19,9 @@ public final class CombatService {
     private static final long DROP_TTL_MS = 60_000;
     /** 드롭 아이템 간 x축 간격. 3개 이상 떨어질 때 겹치지 않도록 흩뿌림. */
     private static final double DROP_SCATTER_STEP = 16;
+    /** 몬스터 넉백 속도(px/s) 와 지속 시간(ms). 피격 직후 살짝 밀려나는 연출. */
+    private static final double MONSTER_KNOCKBACK_SPEED = 120;
+    private static final long MONSTER_KNOCKBACK_MS = 180;
 
     private final World world;
     private final EventBus eventBus;
@@ -40,6 +43,14 @@ public final class CombatService {
                 new MonsterDamagedPacket(target.id(), applied, target.hp(), attacker.id()));
         if (target.isDead()) {
             finishKill(map, attacker, target);
+        } else {
+            // 공격자 위치 기준으로 몬스터를 뒤로 밀어낸다. 공격자가 좌측이면 우측으로.
+            double dir = target.x() >= attacker.x() ? 1 : -1;
+            target.applyKnockback(dir * MONSTER_KNOCKBACK_SPEED, MONSTER_KNOCKBACK_MS);
+            // 이동 브로드캐스트로 클라가 즉시 보간을 시작하도록 최신 상태를 전달.
+            map.broadcast("MONSTER_MOVE",
+                    new mygame.network.packets.Packets.MonsterMovedPacket(
+                            target.id(), target.x(), target.vx()));
         }
         return applied;
     }
