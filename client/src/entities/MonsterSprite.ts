@@ -36,6 +36,8 @@ export class MonsterSprite {
   private readonly hpBg: Phaser.GameObjects.Rectangle;
   private readonly hpFill: Phaser.GameObjects.Rectangle;
   private targetX: number;
+  /** 서버가 최근 알려준 속도(px/s). dead-reckoning 으로 targetX 를 자체 추진하는 데 쓴다. */
+  private targetVx = 0;
   private readonly y: number;
   private hp: number;
   private readonly maxHp: number;
@@ -66,6 +68,7 @@ export class MonsterSprite {
 
   setTarget(x: number, vx: number): void {
     this.targetX = x;
+    this.targetVx = vx;
     // 기본 텍스처는 왼쪽을 바라본다(눈이 x=6, 껍질이 x=22).
     // 따라서 오른쪽으로 이동할 때 flip, 왼쪽 이동 시 원본 유지.
     if (vx > 0) this.sprite.setFlipX(true);
@@ -96,7 +99,11 @@ export class MonsterSprite {
   }
 
   update(dt: number): void {
-    const t = Math.min(1, dt / 180);
+    // Dead-reckoning: 서버 샘플이 오기 전 구간에도 targetX 가 스스로 전진하도록
+    // 최신 vx 를 기반으로 추진. 새 샘플이 도착하면 setTarget 이 targetX 를 덮어써
+    // 서버 권위와 재동기. 이로써 브로드캐스트 주기(100ms) 간격의 스테핑이 사라진다.
+    this.targetX += this.targetVx * (dt / 1000);
+    const t = Math.min(1, dt / 120);
     this.sprite.x += (this.targetX - this.sprite.x) * t;
     this.sprite.y = this.y;
     this.hpBg.setPosition(this.sprite.x, this.sprite.y - 26);

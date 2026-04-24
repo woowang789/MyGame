@@ -28,7 +28,11 @@ import org.slf4j.LoggerFactory;
 public final class GameMap {
 
     private static final Logger log = LoggerFactory.getLogger(GameMap.class);
-    private static final long MONSTER_SAMPLE_MS = 200;
+    /**
+     * 몬스터 위치 브로드캐스트 주기. 너무 길면(5Hz 급) 클라 보간이 새 샘플 전에 수렴해
+     * 끊겨 보인다. 10Hz 정도가 네트워크 비용 대비 움직임이 매끄럽다.
+     */
+    private static final long MONSTER_SAMPLE_MS = 100;
 
     /** 플레이어-몬스터 접촉 판정 박스. 간단한 AABB. */
     private static final double CONTACT_RANGE_X = 36;
