@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 /** 템플릿 ID → 색상. 서버 ItemRegistry 와 동일하게 유지해야 한다. */
-const ITEM_COLORS: Record<string, number> = {
+export const ITEM_COLORS: Record<string, number> = {
   red_potion: 0xe74c3c,
   blue_potion: 0x3498db,
   snail_shell: 0xb36836,
