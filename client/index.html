@@ -76,6 +76,40 @@
       #chat-log .sys { color: #9fdcff; }
       #chat-log .whisper { color: #ffb4ff; }
       #chat-log .all { color: #ffffff; }
+
+      /*
+       * 픽업 로그: 경험치·메소·아이템 획득 알림 전용. 좌하단 고정.
+       * 채팅과 분리해 시각적 혼잡을 줄인다. 각 라인은 4초 뒤 페이드아웃.
+       */
+      #pickup-log {
+        position: fixed;
+        left: 12px;
+        bottom: 14px;
+        display: flex;
+        flex-direction: column-reverse;             /* 새 알림이 아래쪽에 쌓이도록 */
+        gap: 3px;
+        max-width: 320px;
+        pointer-events: none;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 12px;
+        line-height: 1.45;
+        z-index: 40;
+      }
+      #pickup-log .entry {
+        padding: 4px 10px;
+        background: rgba(0, 0, 0, 0.55);
+        border-radius: 4px;
+        color: #fff;
+        opacity: 1;
+        transition: opacity 600ms ease;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #pickup-log .entry.fading { opacity: 0; }
+      #pickup-log .entry.exp  { color: #aee1ff; }
+      #pickup-log .entry.meso { color: #ffe27a; }
+      #pickup-log .entry.item { color: #c7ffb0; }
       #chat-input {
         width: 100%;
         box-sizing: border-box;
@@ -544,6 +578,9 @@
 
     <div id="hud">방향키 이동 · ↑ 점프/포털 · Space 공격 · I 인벤 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
     <div id="game-root"></div>
+
+    <!-- 픽업 로그(좌하단): 경험치/메소/아이템 획득 알림. 채팅과 분리. -->
+    <div id="pickup-log"></div>
 
     <div id="chat-box">
       <div id="chat-log"></div>
