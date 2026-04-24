@@ -72,10 +72,10 @@ public final class MonsterRegistry {
                 ),
                 0xffa64a));
 
-        // 나무 토막: 비공격형. 시작 지역에 둘 경우 파밍 타깃.
+        // 나무 토막: 느리고 공격도 약하지만 접촉 시 약간의 피해는 준다.
         put(m, new MonsterTemplate(
                 "stump", "나무 토막",
-                70, 0, 2000, 30, 20, 5500,
+                70, 8, 2000, 30, 20, 5500,
                 8, 25,
                 DropTable.of(
                         new Entry("snail_shell", 0.20),
