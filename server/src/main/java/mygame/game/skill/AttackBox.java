@@ -39,4 +39,21 @@ public final class AttackBox {
         }
         return result;
     }
+
+    /**
+     * 판정 박스 안에서 시전자와 x 거리가 가까운 순으로 최대 {@code maxTargets} 마리 반환.
+     * 기본 공격·단일/제한 타격 스킬이 공유하는 "가장 가까운 N마리 고르기" 로직을 모아
+     * 호출부마다 정렬 코드를 중복하지 않게 한다.
+     */
+    public static List<Monster> nearestInFront(Player caster, GameMap map, String dir,
+                                               double rangeMul, int maxTargets) {
+        if (maxTargets <= 0) return List.of();
+        List<Monster> inBox = monstersInFront(caster, map, dir, rangeMul);
+        if (inBox.size() <= maxTargets && maxTargets >= inBox.size()) {
+            // 이미 상한 이하라도 거리 순 정렬은 유지해 "가까운 것부터" 의미를 보존.
+        }
+        double cx = caster.x();
+        inBox.sort((a, b) -> Double.compare(Math.abs(a.x() - cx), Math.abs(b.x() - cx)));
+        return inBox.size() > maxTargets ? inBox.subList(0, maxTargets) : inBox;
+    }
 }

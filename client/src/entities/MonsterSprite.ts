@@ -66,8 +66,10 @@ export class MonsterSprite {
 
   setTarget(x: number, vx: number): void {
     this.targetX = x;
-    if (vx < 0) this.sprite.setFlipX(true);
-    else if (vx > 0) this.sprite.setFlipX(false);
+    // 기본 텍스처는 왼쪽을 바라본다(눈이 x=6, 껍질이 x=22).
+    // 따라서 오른쪽으로 이동할 때 flip, 왼쪽 이동 시 원본 유지.
+    if (vx > 0) this.sprite.setFlipX(true);
+    else if (vx < 0) this.sprite.setFlipX(false);
   }
 
   applyDamage(newHp: number, scene: Phaser.Scene, damage: number): void {
