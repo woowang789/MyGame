@@ -19,9 +19,9 @@ public final class CombatService {
     private static final long DROP_TTL_MS = 60_000;
     /** 드롭 아이템 간 x축 간격. 3개 이상 떨어질 때 겹치지 않도록 흩뿌림. */
     private static final double DROP_SCATTER_STEP = 16;
-    /** 몬스터 넉백 속도(px/s) 와 지속 시간(ms). 피격 직후 살짝 밀려나는 연출. */
-    private static final double MONSTER_KNOCKBACK_SPEED = 120;
-    private static final long MONSTER_KNOCKBACK_MS = 180;
+    /** 몬스터 넉백 속도(px/s) 와 지속 시간(ms). 총 이동량 ≈ speed × duration/1000. */
+    private static final double MONSTER_KNOCKBACK_SPEED = 320;
+    private static final long MONSTER_KNOCKBACK_MS = 280;
 
     private final World world;
     private final EventBus eventBus;
