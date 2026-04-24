@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import mygame.game.item.ItemTemplate.ItemType;
+import mygame.game.item.ItemTemplate.UseEffect;
 import mygame.game.stat.Stats;
 
 /**
@@ -20,8 +21,10 @@ public final class ItemRegistry {
 
     static {
         Map<String, ItemTemplate> m = new LinkedHashMap<>();
-        put(m, new ItemTemplate("red_potion", "빨간 포션", 0xe74c3c, ItemType.CONSUMABLE));
-        put(m, new ItemTemplate("blue_potion", "파란 포션", 0x3498db, ItemType.CONSUMABLE));
+        put(m, new ItemTemplate("red_potion", "빨간 포션", 0xe74c3c,
+                ItemType.CONSUMABLE, new UseEffect(30, 0)));
+        put(m, new ItemTemplate("blue_potion", "파란 포션", 0x3498db,
+                ItemType.CONSUMABLE, new UseEffect(0, 30)));
         put(m, new ItemTemplate("snail_shell", "달팽이 껍질", 0xb36836, ItemType.ETC));
         // Phase I: 장비 아이템. bonus 는 장착 시 BaseStats 에 더해지는 값.
         // 순서: (maxHp, maxMp, attack, speed)

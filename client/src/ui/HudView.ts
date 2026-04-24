@@ -16,7 +16,9 @@ const TAB_LABEL: Record<ItemType, string> = {
 /** 인벤/장비 슬롯에서 GameScene 이 처리할 사용자 액션. */
 export type InventoryAction =
   | { kind: 'equip'; templateId: string }
-  | { kind: 'unequip'; slot: string };
+  | { kind: 'unequip'; slot: string }
+  | { kind: 'use'; templateId: string }
+  | { kind: 'drop'; templateId: string; amount: number };
 
 /**
  * HUD DOM 조작 전담.
@@ -219,16 +221,31 @@ export class HudView {
     });
     grid.addEventListener('mouseleave', () => tooltip.classList.add('hidden'));
 
-    // 더블클릭: 장비 탭에서 장착.
+    // 더블클릭 동작:
+    //   Shift + 더블클릭 → 해당 슬롯 1개 드롭(확인 후)
+    //   장비 탭 더블클릭 → 장착
+    //   소비 탭 더블클릭 → 사용
+    //   기타 탭 더블클릭 → 없음
     grid.addEventListener('dblclick', (e) => {
       const slot = (e.target as HTMLElement).closest('.inv-slot.filled') as HTMLElement | null;
       if (!slot) return;
       const id = slot.dataset.itemId;
       if (!id) return;
-      if (getItemMeta(id).type === 'EQUIPMENT') {
-        this.inventoryActionHandler?.({ kind: 'equip', templateId: id });
+      const meta = getItemMeta(id);
+
+      if ((e as MouseEvent).shiftKey) {
+        if (window.confirm(`"${meta.name}" 1개를 버리시겠습니까?`)) {
+          this.inventoryActionHandler?.({ kind: 'drop', templateId: id, amount: 1 });
+        }
+        return;
       }
-      // CONSUMABLE·ETC 더블클릭은 Phase D 에서 처리(소비/사용).
+
+      if (meta.type === 'EQUIPMENT') {
+        this.inventoryActionHandler?.({ kind: 'equip', templateId: id });
+      } else if (meta.type === 'CONSUMABLE') {
+        this.inventoryActionHandler?.({ kind: 'use', templateId: id });
+      }
+      // ETC 는 일반 더블클릭으로 할 일이 없다.
     });
 
     // 드래그 재정렬: 현재 탭에서 source→target 슬롯의 id 순서 swap 후 저장·재렌더.
