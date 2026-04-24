@@ -195,6 +195,8 @@ export class HudView {
       });
     });
 
+    this.bindInventoryDrag();
+
     // 슬롯 hover 툴팁 (이벤트 위임)
     const grid = document.getElementById('inv-grid');
     const tooltip = document.getElementById('item-tooltip');
@@ -349,6 +351,99 @@ export class HudView {
   private setInventoryHidden(hidden: boolean): void {
     document.getElementById('inventory-window')?.classList.toggle('hidden', hidden);
     if (hidden) document.getElementById('item-tooltip')?.classList.add('hidden');
+  }
+
+  /**
+   * 인벤토리 창을 헤더로 잡아 드래그 이동 가능하게 한다.
+   *
+   * 초기 CSS 는 `top:50%; left:50%; transform: translate(-50%,-50%)` 중앙 정렬.
+   * 첫 드래그 시 transform 을 벗기고 실제 픽셀 좌표로 고정해 이후 left/top 만 갱신한다.
+   * 위치는 계정별 localStorage 에 저장해 재접속 시 복원(탭 순서 저장 패턴과 동일).
+   */
+  private bindInventoryDrag(): void {
+    const win = document.getElementById('inventory-window');
+    const header = win?.querySelector('.header') as HTMLElement | null;
+    if (!win || !header) return;
+
+    // 저장된 위치 복원
+    this.restoreInventoryPosition(win);
+
+    let startX = 0;
+    let startY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+    let dragging = false;
+
+    const onMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      // 화면 밖으로 완전히 나가지 않게 클램핑. 헤더 일부만 남으면 다시 잡을 수 있다.
+      const rect = win.getBoundingClientRect();
+      const maxX = window.innerWidth - 40;
+      const maxY = window.innerHeight - 24;
+      const nx = Math.min(maxX, Math.max(40 - rect.width, originLeft + dx));
+      const ny = Math.min(maxY, Math.max(0, originTop + dy));
+      win.style.left = `${nx}px`;
+      win.style.top = `${ny}px`;
+    };
+
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      win.classList.remove('dragging');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      this.saveInventoryPosition(win);
+    };
+
+    header.addEventListener('mousedown', (e) => {
+      // 닫기 버튼 등 헤더 내부 컨트롤 클릭은 드래그 시작에서 제외.
+      if ((e.target as HTMLElement).closest('.close-btn')) return;
+      // transform 중앙 정렬을 실제 픽셀 좌표로 변환하고 한 번만 벗긴다.
+      const rect = win.getBoundingClientRect();
+      win.style.transform = 'none';
+      win.style.left = `${rect.left}px`;
+      win.style.top = `${rect.top}px`;
+      originLeft = rect.left;
+      originTop = rect.top;
+      startX = e.clientX;
+      startY = e.clientY;
+      dragging = true;
+      win.classList.add('dragging');
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      e.preventDefault();
+    });
+  }
+
+  private inventoryPosKey(): string {
+    return `inv-pos:${this.accountKey}`;
+  }
+
+  private saveInventoryPosition(win: HTMLElement): void {
+    try {
+      window.localStorage.setItem(
+        this.inventoryPosKey(),
+        JSON.stringify({ left: win.style.left, top: win.style.top })
+      );
+    } catch {
+      // localStorage 접근 실패(시크릿/쿼터)는 무시 — 위치 기억은 편의 기능.
+    }
+  }
+
+  private restoreInventoryPosition(win: HTMLElement): void {
+    try {
+      const raw = window.localStorage.getItem(this.inventoryPosKey());
+      if (!raw) return;
+      const { left, top } = JSON.parse(raw) as { left?: string; top?: string };
+      if (!left || !top) return;
+      win.style.transform = 'none';
+      win.style.left = left;
+      win.style.top = top;
+    } catch {
+      // 파싱 실패 시 기본 중앙 정렬 유지.
+    }
   }
 
   updateEquipment(slots: Record<string, string>): void {
