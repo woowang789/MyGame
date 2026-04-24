@@ -32,14 +32,14 @@ export const ITEM_META: Record<string, ItemMeta> = {
     name: '빨간 포션',
     color: 0xe74c3c,
     type: 'CONSUMABLE',
-    description: '체력을 회복한다. (사용 미구현)'
+    description: '사용 시 HP 30 회복.'
   },
   blue_potion: {
     id: 'blue_potion',
     name: '파란 포션',
     color: 0x3498db,
     type: 'CONSUMABLE',
-    description: '마나를 회복한다. (사용 미구현)'
+    description: '사용 시 MP 30 회복.'
   },
   snail_shell: {
     id: 'snail_shell',
