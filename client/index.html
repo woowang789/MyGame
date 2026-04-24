@@ -356,10 +356,75 @@
         border-color: rgba(255, 255, 255, 0.28);
       }
 
+      /*
+       * 탭 바: 장비 / 소비 / 기타. 클릭 시 .active 토글, HudView 가 현 탭의 아이템만 렌더.
+       */
+      #inventory-window .tabs {
+        display: flex;
+        gap: 4px;
+        padding: 6px 8px 0 8px;
+      }
+      #inventory-window .tabs .tab {
+        flex: 1;
+        padding: 5px 0;
+        text-align: center;
+        font-size: 11px;
+        color: #8a8a96;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: none;
+        border-radius: 4px 4px 0 0;
+        cursor: pointer;
+        user-select: none;
+      }
+      #inventory-window .tabs .tab:hover { color: #ddd; }
+      #inventory-window .tabs .tab.active {
+        color: #ffeb8a;
+        background: rgba(255, 235, 138, 0.08);
+        border-color: rgba(255, 235, 138, 0.3);
+      }
+
       #inventory-window .body {
         padding: 10px;
         max-height: 60vh;
         overflow-y: auto;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      /* 툴팁: 슬롯 hover 시 이름·타입·설명·보너스를 표시. */
+      #item-tooltip {
+        position: fixed;
+        z-index: 120;
+        max-width: 220px;
+        padding: 8px 10px;
+        background: rgba(12, 14, 22, 0.96);
+        color: #fff;
+        border: 1px solid rgba(255, 235, 138, 0.35);
+        border-radius: 6px;
+        font-size: 11px;
+        line-height: 1.55;
+        pointer-events: none;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      }
+      #item-tooltip.hidden { display: none; }
+      #item-tooltip .tt-name {
+        font-weight: 700;
+        color: #ffeb8a;
+        margin-bottom: 2px;
+      }
+      #item-tooltip .tt-type {
+        font-size: 10px;
+        color: #8a8a96;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      #item-tooltip .tt-bonus {
+        margin-top: 4px;
+        color: #aee1ff;
+      }
+      #item-tooltip .tt-desc {
+        margin-top: 4px;
+        color: #cfcfd6;
       }
       #inventory-window .inv-grid {
         display: grid;
@@ -478,9 +543,22 @@
         <span class="hint">I 열기/닫기 · Esc 닫기</span>
         <button id="inv-close" class="close-btn" type="button" aria-label="닫기">×</button>
       </div>
+      <div class="tabs" id="inv-tabs">
+        <div class="tab active" data-tab="EQUIPMENT">장비</div>
+        <div class="tab" data-tab="CONSUMABLE">소비</div>
+        <div class="tab" data-tab="ETC">기타</div>
+      </div>
       <div class="body">
         <div id="inv-grid" class="inv-grid"></div>
       </div>
+    </div>
+
+    <!-- 아이템 호버 툴팁. 항상 DOM 에 존재하고 표시/위치만 JS 가 제어. -->
+    <div id="item-tooltip" class="hidden">
+      <div class="tt-name"></div>
+      <div class="tt-type"></div>
+      <div class="tt-bonus"></div>
+      <div class="tt-desc"></div>
     </div>
 
     <!--

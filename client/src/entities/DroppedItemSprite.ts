@@ -1,21 +1,16 @@
 import Phaser from 'phaser';
+import { ITEM_META } from '../data/ItemMeta';
 
-/** 템플릿 ID → 색상. 서버 ItemRegistry 와 동일하게 유지해야 한다. */
-export const ITEM_COLORS: Record<string, number> = {
-  red_potion: 0xe74c3c,
-  blue_potion: 0x3498db,
-  snail_shell: 0xb36836,
-  // 재화 메소는 금색. 서버 DroppedItem.MESO_ID 와 맞춰야 한다.
-  meso: 0xffd84a
-};
-
-/** 템플릿 ID → 표시 이름. */
-export const ITEM_NAMES: Record<string, string> = {
-  red_potion: '빨간 포션',
-  blue_potion: '파란 포션',
-  snail_shell: '달팽이 껍질',
-  meso: '메소'
-};
+/**
+ * 레거시 호환: 기존 import 경로를 깨지 않도록 ITEM_META 에서 파생된
+ * 조회 맵을 계속 export 한다. 새 코드는 ItemMeta.ts 를 직접 참조하는 편이 낫다.
+ */
+export const ITEM_COLORS: Record<string, number> = Object.fromEntries(
+  Object.values(ITEM_META).map((m) => [m.id, m.color])
+);
+export const ITEM_NAMES: Record<string, string> = Object.fromEntries(
+  Object.values(ITEM_META).map((m) => [m.id, m.name])
+);
 
 /**
  * 맵 바닥에 떨어진 아이템을 다이아몬드 모양 + 살짝 바운스 애니메이션으로 표현.
