@@ -76,6 +76,8 @@ export class GameScene extends Phaser.Scene {
   private readonly skillCooldownUntil = new Map<string, number>();
   /** 넉백 종료 시각(performance.now 기준). 이 시각까지 좌우 입력을 무시해 밀려나는 느낌을 준다. */
   private knockbackUntil = 0;
+  /** true 면 사망 상태. 부활 패킷 수신 시 false 로 복귀. 사망 중에는 입력 전반을 차단한다. */
+  private isDead = false;
   private readonly hud = new HudView();
 
   private currentMapId = 'henesys';
@@ -354,9 +356,12 @@ export class GameScene extends Phaser.Scene {
   private onPlayerDied(p: Packet): void {
     const playerId = p.playerId as number;
     if (playerId === this.myId) {
+      this.isDead = true;
       this.hud.showDeathOverlay();
       this.player.setTint(0x555555);
       this.player.setAlpha(0.5);
+      // 정지 상태로 고정. 서버도 사망 중 MOVE 를 무시하므로 클라 예측도 멈춘다.
+      this.player.setVelocity(0, 0);
     } else {
       const r = this.remotes.get(playerId);
       if (r) {
@@ -371,6 +376,7 @@ export class GameScene extends Phaser.Scene {
     const x = p.x as number;
     const y = p.y as number;
     if (playerId === this.myId) {
+      this.isDead = false;
       this.hud.hideDeathOverlay();
       this.player.clearTint();
       this.player.setAlpha(1);
@@ -473,9 +479,10 @@ export class GameScene extends Phaser.Scene {
   override update(time: number, delta: number): void {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
 
-    // 채팅 입력 중에는 게임 입력을 전부 건너뛴다. 좌우 속도도 잠가 두어
-    // Q/E 등이 텍스트에 섞여들 때 캐릭터가 움직이지 않도록 한다.
-    if (this.isChatFocused()) {
+    // 채팅 입력 중 또는 사망 중에는 게임 입력을 전부 건너뛴다.
+    // 좌우 속도도 잠가 두어 Q/E 등이 텍스트에 섞이거나, 사망 후 키 입력으로
+    // 시체가 움직이는 현상을 막는다.
+    if (this.isChatFocused() || this.isDead) {
       this.player.setVelocityX(0);
       for (const r of this.remotes.values()) r.update(delta);
       for (const m of this.monsters.values()) m.update(delta);
