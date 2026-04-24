@@ -47,6 +47,11 @@ import mygame.network.packets.Packets.StatsPacket;
 import mygame.network.packets.Packets.UnequipRequest;
 import mygame.game.item.EquipSlot;
 import mygame.game.item.ItemRegistry;
+import mygame.game.skill.Skill;
+import mygame.game.skill.SkillContext;
+import mygame.game.skill.SkillRegistry;
+import mygame.network.packets.Packets.SkillUsedPacket;
+import mygame.network.packets.Packets.UseSkillRequest;
 import mygame.network.packets.Packets.MapChangedPacket;
 import mygame.network.packets.Packets.MonsterDamagedPacket;
 import mygame.network.packets.Packets.MonsterDiedPacket;
@@ -127,6 +132,7 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("CHAT", this::handleChat);
         dispatcher.register("EQUIP", this::handleEquip);
         dispatcher.register("UNEQUIP", this::handleUnequip);
+        dispatcher.register("USE_SKILL", this::handleUseSkill);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -304,6 +310,8 @@ public final class GameServer extends WebSocketServer {
         data.items().forEach(player.inventory()::add);
         // 장비 복원: 슬롯별로 equip() 호출(원래 로직과 동일한 경로를 타게 해 불일치 제거).
         data.equipment().forEach((slotName, itemId) -> player.equipment().equip(itemId));
+        // MP 는 세션 시작 시 최대로 충전. (HP/MP 영속화는 이후 Phase 에서.)
+        player.fullHealMp();
 
         sessionPlayers.put(ctx.conn(), player);
         map.addPlayer(player);
@@ -369,13 +377,93 @@ public final class GameServer extends WebSocketServer {
         sendEquipmentAndStats(player);
     }
 
+    // --- Phase M 스킬 핸들러 ---
+
+    private void handleUseSkill(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        UseSkillRequest req = ctx.json().treeToValue(ctx.body(), UseSkillRequest.class);
+        String skillId = req.skillId();
+        if (skillId == null || !SkillRegistry.exists(skillId)) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "알 수 없는 스킬: " + skillId));
+            return;
+        }
+        Skill skill = SkillRegistry.get(skillId);
+
+        // 직업 태그 검증. 초보자는 BEGINNER 스킬만 사용 가능. 전직 Phase 확장 지점.
+        if (!Skill.JOB_BEGINNER.equals(skill.job())) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "아직 배우지 않은 스킬입니다."));
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (!player.tryActivateSkill(skill.id(), skill.cooldownMs(), now)) {
+            // 쿨다운 중. 스팸 방지를 위해 조용히 드롭하고 클라 HUD 가 쿨다운을 표시.
+            return;
+        }
+        if (!player.spendMp(skill.mpCost())) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "MP 가 부족합니다."));
+            return;
+        }
+
+        GameMap map = world.map(player.mapId());
+        if (map == null) return;
+        String dir = (req.dir() == null || req.dir().isBlank()) ? player.facing() : req.dir();
+        SkillContext skillCtx = SkillContext.of(player, map, dir, now);
+        skill.apply(skillCtx);
+
+        // 이펙트용 브로드캐스트 먼저(근접/원거리 모든 스킬 공통).
+        map.broadcast("SKILL_USED", new SkillUsedPacket(player.id(), skill.id(), dir));
+
+        // 몬스터 피해 결과를 기존 MONSTER_DAMAGED 패킷으로 재활용.
+        for (var hit : skillCtx.outcome().hits()) {
+            map.broadcast("MONSTER_DAMAGED",
+                    new MonsterDamagedPacket(hit.monsterId(), hit.damage(), hit.remainingHp(), player.id()));
+            if (hit.killed()) {
+                Monster m = findMonsterById(map, hit.monsterId());
+                if (m == null) continue;
+                SpawnPoint origin = map.findSpawnFor(m);
+                map.killMonster(m, origin);
+                map.broadcast("MONSTER_DIED", new MonsterDiedPacket(m.id()));
+                int expReward = origin != null ? origin.expReward() : 0;
+                eventBus.publish(new MonsterKilled(player, m, expReward));
+                if (origin != null && origin.dropTable() != null) {
+                    int scatter = 0;
+                    for (String itemId : origin.dropTable().roll()) {
+                        double dropX = m.x() + (scatter - 1) * 16;
+                        scatter++;
+                        DroppedItem d = new DroppedItem(
+                                world.itemIdSeq().getAndIncrement(),
+                                itemId, dropX, m.y(), DROP_TTL_MS);
+                        map.addDroppedItem(d);
+                    }
+                }
+            }
+        }
+
+        // MP / 쿨다운 상태 동기화. 스탯 패킷이 현재 mp 를 포함하므로 한 번 보내면 된다.
+        sendStats(player);
+    }
+
+    private static Monster findMonsterById(GameMap map, int monsterId) {
+        for (Monster m : map.monsters()) {
+            if (m.id() == monsterId) return m;
+        }
+        return null;
+    }
+
     /** 본인에게 장비 스냅샷과 최종 스탯을 함께 전달. 공격 피해량 등 UI 에 영향. */
     private void sendEquipmentAndStats(Player player) {
         player.connection().send(PacketEnvelope.wrap(json, "EQUIPMENT",
                 new EquipmentPacket(player.id(), equipmentSnapshotAsStringMap(player))));
+        sendStats(player);
+    }
+
+    /** 최종 스탯 + 현재 MP 를 본인에게 전달. 스킬 사용·장비 변경 시 모두 호출. */
+    private void sendStats(Player player) {
         mygame.game.stat.Stats s = player.effectiveStats();
         player.connection().send(PacketEnvelope.wrap(json, "STATS",
-                new StatsPacket(s.maxHp(), s.attack(), s.speed())));
+                new StatsPacket(s.maxHp(), s.maxMp(), s.attack(), s.speed(), player.mp())));
     }
 
     private void handleMove(PacketContext ctx) throws Exception {

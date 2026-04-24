@@ -24,14 +24,15 @@ public final class ItemRegistry {
         put(m, new ItemTemplate("blue_potion", "파란 포션", 0x3498db, ItemType.CONSUMABLE));
         put(m, new ItemTemplate("snail_shell", "달팽이 껍질", 0xb36836, ItemType.ETC));
         // Phase I: 장비 아이템. bonus 는 장착 시 BaseStats 에 더해지는 값.
+        // 순서: (maxHp, maxMp, attack, speed)
         put(m, new ItemTemplate("wooden_sword", "나무 검", 0x8b5a2b,
-                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 10, 0)));
+                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 10, 0)));
         put(m, new ItemTemplate("iron_sword", "철 검", 0xbfc7d5,
-                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 25, 0)));
+                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 25, 0)));
         put(m, new ItemTemplate("leather_cap", "가죽 모자", 0x6a4e2a,
-                ItemType.EQUIPMENT, EquipSlot.HAT, new Stats(15, 0, 0)));
+                ItemType.EQUIPMENT, EquipSlot.HAT, new Stats(15, 5, 0, 0)));
         put(m, new ItemTemplate("cloth_armor", "천 갑옷", 0xcfa16a,
-                ItemType.EQUIPMENT, EquipSlot.ARMOR, new Stats(25, 0, 0)));
+                ItemType.EQUIPMENT, EquipSlot.ARMOR, new Stats(25, 0, 0, 0)));
         TEMPLATES = Collections.unmodifiableMap(m);
     }
 

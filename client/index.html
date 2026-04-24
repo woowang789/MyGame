@@ -168,6 +168,73 @@
         font-size: 10px;
         color: #888;
       }
+
+      /* Phase M — 스킬 HUD */
+      #skill-box {
+        position: fixed;
+        right: 12px;
+        top: 320px;
+        width: 200px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+      #skill-box .title {
+        color: #ff8aff;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      #skill-box .skill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+      }
+      #skill-box .skill .kbd {
+        display: inline-block;
+        min-width: 16px;
+        padding: 1px 4px;
+        background: #2a2a3b;
+        border: 1px solid #4a4a6a;
+        border-radius: 3px;
+        font-size: 10px;
+        text-align: center;
+        color: #ffeb8a;
+      }
+      #skill-box .skill .sname { flex: 1; }
+      #skill-box .skill .cd {
+        font-size: 10px;
+        color: #ff7a7a;
+        min-width: 30px;
+        text-align: right;
+      }
+      #skill-box .skill.cooling { opacity: 0.45; }
+      #mp-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        font-size: 11px;
+        color: #aee1ff;
+      }
+      #mp-bar-bg {
+        flex: 1;
+        height: 8px;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid #3a3a55;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      #mp-bar-fill {
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, #4aa3ff, #7bd4ff);
+        transition: width 120ms linear;
+      }
     </style>
   </head>
   <body>
@@ -199,6 +266,23 @@
       <div class="slot"><span class="name">갑옷</span><span class="val" id="eq-armor">-</span></div>
       <div class="stats" id="eq-stats">ATK 0 · MAXHP 0</div>
       <div class="hint">Q: 인벤 첫 장비 착용 · E: 전부 해제</div>
+    </div>
+    <div id="skill-box">
+      <div class="title">스킬 (초보자)</div>
+      <div class="skill" data-id="power_strike">
+        <span class="kbd">1</span><span class="sname">파워 스트라이크</span><span class="cd" id="cd-power_strike"></span>
+      </div>
+      <div class="skill" data-id="triple_blow">
+        <span class="kbd">2</span><span class="sname">트리플 블로우</span><span class="cd" id="cd-triple_blow"></span>
+      </div>
+      <div class="skill" data-id="recovery">
+        <span class="kbd">3</span><span class="sname">리커버리</span><span class="cd" id="cd-recovery"></span>
+      </div>
+      <div id="mp-row">
+        <span>MP</span>
+        <div id="mp-bar-bg"><div id="mp-bar-fill"></div></div>
+        <span id="mp-text">0 / 0</span>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

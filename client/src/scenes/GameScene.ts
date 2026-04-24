@@ -57,6 +57,7 @@ export class GameScene extends Phaser.Scene {
   private attackKey!: Phaser.Input.Keyboard.Key;
   private equipKey!: Phaser.Input.Keyboard.Key;
   private unequipKey!: Phaser.Input.Keyboard.Key;
+  private skillKeys!: Record<string, Phaser.Input.Keyboard.Key>;
   private myLabel!: Phaser.GameObjects.Text;
   private facing: 'left' | 'right' = 'right';
   private statusLabel!: Phaser.GameObjects.Text;
@@ -74,6 +75,14 @@ export class GameScene extends Phaser.Scene {
   private inventoryItems: Record<string, number> = {};
   /** 현재 착용 중인 장비 슬롯. E 키로 해제. */
   private equippedSlots: Record<string, string> = {};
+  /** 스킬별 남은 쿨다운 종료 시각(ms, performance.now 기준). HUD 카운트다운 표시용. */
+  private readonly skillCooldownUntil = new Map<string, number>();
+  /** 스킬 메타 (클라에서도 쿨다운 길이를 알아야 예측 표시 가능). 서버와 동일 값. */
+  private readonly SKILL_META: Record<string, { name: string; cooldownMs: number; mpCost: number }> = {
+    power_strike: { name: '파워 스트라이크', cooldownMs: 1500, mpCost: 8 },
+    triple_blow: { name: '트리플 블로우', cooldownMs: 4000, mpCost: 18 },
+    recovery: { name: '리커버리', cooldownMs: 10000, mpCost: 0 }
+  };
 
   private currentMapId = 'henesys';
   private tilemap: Phaser.Tilemaps.Tilemap | null = null;
@@ -120,6 +129,11 @@ export class GameScene extends Phaser.Scene {
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.equipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.unequipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.skillKeys = {
+      power_strike: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+      triple_blow: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+      recovery: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.THREE)
+    };
 
     this.createHud();
     this.setupChatInput();
@@ -207,6 +221,7 @@ export class GameScene extends Phaser.Scene {
     this.network.on('CHAT', (p) => this.onChat(p));
     this.network.on('EQUIPMENT', (p) => this.onEquipment(p));
     this.network.on('STATS', (p) => this.onStats(p));
+    this.network.on('SKILL_USED', (p) => this.onSkillUsed(p));
     this.network.on('ERROR', (p) => {
       console.warn('[Server ERROR]', p.message);
       this.appendChatLog('sys', `[오류] ${p.message}`);
@@ -353,11 +368,78 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onStats(p: Packet): void {
-    const el = document.getElementById('eq-stats');
-    if (!el) return;
     const attack = p.attack as number;
     const maxHp = p.maxHp as number;
-    el.textContent = `ATK ${attack} · MAXHP ${maxHp}`;
+    const maxMp = p.maxMp as number;
+    const currentMp = p.currentMp as number;
+    const statsEl = document.getElementById('eq-stats');
+    if (statsEl) statsEl.textContent = `ATK ${attack} · MAXHP ${maxHp}`;
+    const mpText = document.getElementById('mp-text');
+    if (mpText) mpText.textContent = `${currentMp} / ${maxMp}`;
+    const mpFill = document.getElementById('mp-bar-fill');
+    if (mpFill) mpFill.style.width = `${maxMp > 0 ? (100 * currentMp) / maxMp : 0}%`;
+  }
+
+  private onSkillUsed(p: Packet): void {
+    const playerId = p.playerId as number;
+    const skillId = p.skillId as string;
+    // 시전자 좌표
+    const x = playerId === this.myId
+      ? this.player.x
+      : this.remotes.get(playerId)?.sprite.x ?? 0;
+    const y = playerId === this.myId
+      ? this.player.y
+      : this.remotes.get(playerId)?.sprite.y ?? 0;
+    this.spawnSkillEffect(skillId, x, y, (p.dir as string) ?? 'right');
+  }
+
+  /** 스킬별 간단한 이펙트. 색상·크기로 구분. */
+  private spawnSkillEffect(skillId: string, x: number, y: number, dir: string): void {
+    const color = skillId === 'power_strike'
+      ? 0xffb347
+      : skillId === 'triple_blow'
+      ? 0xff6bd6
+      : 0x7bd4ff;
+    const offset = dir === 'left' ? -36 : 36;
+    if (skillId === 'recovery') {
+      // 자기 회복: 플레이어 위에 상승 원형
+      const fx = this.add.circle(x, y, 20, color, 0.6).setStrokeStyle(2, 0xffffff);
+      this.tweens.add({
+        targets: fx,
+        y: y - 50,
+        alpha: 0,
+        scale: 1.6,
+        duration: 600,
+        onComplete: () => fx.destroy()
+      });
+      return;
+    }
+    const slash = this.add.rectangle(x + offset, y, 80, 32, color, 0.7).setStrokeStyle(2, 0xffffff);
+    this.tweens.add({
+      targets: slash,
+      alpha: 0,
+      scaleX: 1.6,
+      scaleY: 1.2,
+      duration: 220,
+      onComplete: () => slash.destroy()
+    });
+  }
+
+  private refreshSkillCooldowns(now: number): void {
+    for (const skillId of Object.keys(this.SKILL_META)) {
+      const el = document.getElementById(`cd-${skillId}`);
+      const row = el?.parentElement;
+      if (!el) continue;
+      const until = this.skillCooldownUntil.get(skillId) ?? 0;
+      const remaining = Math.max(0, until - now);
+      if (remaining === 0) {
+        el.textContent = '';
+        row?.classList.remove('cooling');
+      } else {
+        el.textContent = `${(remaining / 1000).toFixed(1)}s`;
+        row?.classList.add('cooling');
+      }
+    }
   }
 
   /** 인벤토리에서 장비로 보이는 첫 아이템 ID 반환(없으면 null). */
@@ -402,6 +484,19 @@ export class GameScene extends Phaser.Scene {
         this.network.send({ type: 'UNEQUIP', slot });
       }
     }
+
+    // 1/2/3: 스킬 사용. 쿨다운 예측으로 중복 패킷 방지.
+    for (const [skillId, key] of Object.entries(this.skillKeys)) {
+      if (!Phaser.Input.Keyboard.JustDown(key) || !this.network.isOpen) continue;
+      const until = this.skillCooldownUntil.get(skillId) ?? 0;
+      if (time < until) continue;
+      const meta = this.SKILL_META[skillId];
+      this.skillCooldownUntil.set(skillId, time + meta.cooldownMs);
+      this.network.send({ type: 'USE_SKILL', skillId, dir: this.facing });
+    }
+
+    // 스킬 쿨다운 HUD 갱신(60Hz 갱신 부담 적음, 문자열 변환만).
+    this.refreshSkillCooldowns(time);
 
     // 점프
     if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && body.blocked.down) {

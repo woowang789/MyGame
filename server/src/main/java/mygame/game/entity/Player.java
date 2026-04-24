@@ -34,8 +34,11 @@ public final class Player {
     private volatile String facing = "right";
     private volatile int level = 1;
     private volatile int exp = 0;
+    private volatile int mp = 0;
     private final Inventory inventory = new Inventory();
     private final Equipment equipment = new Equipment();
+    /** 스킬 ID → 마지막 사용 시각(ms). 쿨다운 판정. 접근은 한 플레이어 스레드에서만. */
+    private final java.util.Map<String, Long> skillLastUsedAt = new java.util.concurrent.ConcurrentHashMap<>();
 
     public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
         this.id = id;
@@ -59,8 +62,48 @@ public final class Player {
     public String facing() { return facing; }
     public int level() { return level; }
     public int exp() { return exp; }
+    public int mp() { return mp; }
     public Inventory inventory() { return inventory; }
     public Equipment equipment() { return equipment; }
+
+    /**
+     * MP 를 소모. 부족하면 {@code false} 반환(변경 없음). 스킬 사용 시 호출.
+     * 최대 MP 는 스탯이 바뀌어도 runtime 에서 즉시 재계산되므로 여기서는 단순 차감만.
+     */
+    public synchronized boolean spendMp(int amount) {
+        if (amount <= 0) return true;
+        if (mp < amount) return false;
+        mp -= amount;
+        return true;
+    }
+
+    /** MP 회복. 최대치는 effectiveStats().maxMp() 로 상한을 건다. */
+    public synchronized void restoreMp(int amount) {
+        if (amount <= 0) return;
+        int max = effectiveStats().maxMp();
+        mp = Math.min(max, mp + amount);
+    }
+
+    /** 로그인/레벨업 시 MP 를 최대치로 채운다. 현재 단계에서는 사망 시스템이 없어 간단 처리. */
+    public synchronized void fullHealMp() {
+        mp = effectiveStats().maxMp();
+    }
+
+    /** 쿨다운 체크 + 통과 시 현재 시각 기록. 한 번의 원자 연산으로 중복 사용 방지. */
+    public boolean tryActivateSkill(String skillId, long cooldownMs, long now) {
+        Long last = skillLastUsedAt.get(skillId);
+        if (last != null && now - last < cooldownMs) return false;
+        skillLastUsedAt.put(skillId, now);
+        return true;
+    }
+
+    /** 남은 쿨다운 ms (0 이면 즉시 사용 가능). HUD 용. */
+    public long skillCooldownRemaining(String skillId, long cooldownMs, long now) {
+        Long last = skillLastUsedAt.get(skillId);
+        if (last == null) return 0;
+        long elapsed = now - last;
+        return elapsed >= cooldownMs ? 0 : cooldownMs - elapsed;
+    }
 
     /**
      * 레벨 기본 스탯 + 장비 보너스(Decorator 체인)를 합산한 최종 스탯.

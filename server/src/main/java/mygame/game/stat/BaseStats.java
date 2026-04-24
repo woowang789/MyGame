@@ -9,6 +9,8 @@ public final class BaseStats implements StatProvider {
 
     private static final int BASE_MAX_HP = 50;
     private static final int HP_PER_LEVEL = 10;
+    private static final int BASE_MAX_MP = 25;
+    private static final int MP_PER_LEVEL = 3;
     private static final int BASE_ATTACK = 20;
     private static final int ATTACK_PER_LEVEL = 3;
     private static final int BASE_SPEED = 200;
@@ -23,6 +25,7 @@ public final class BaseStats implements StatProvider {
     public Stats stats() {
         return new Stats(
                 BASE_MAX_HP + HP_PER_LEVEL * (level - 1),
+                BASE_MAX_MP + MP_PER_LEVEL * (level - 1),
                 BASE_ATTACK + ATTACK_PER_LEVEL * (level - 1),
                 BASE_SPEED);
     }

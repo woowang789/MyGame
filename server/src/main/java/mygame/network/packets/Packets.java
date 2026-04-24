@@ -125,6 +125,14 @@ public final class Packets {
      */
     public record EquipmentPacket(int playerId, java.util.Map<String, String> slots) {}
 
-    /** 최종 스탯(장비 포함) 알림. 본인에게만 전송. */
-    public record StatsPacket(int maxHp, int attack, int speed) {}
+    /** 최종 스탯(장비 포함) 알림. 본인에게만 전송. 현재 mp 포함. */
+    public record StatsPacket(int maxHp, int maxMp, int attack, int speed, int currentMp) {}
+
+    // Phase M — 스킬
+
+    /** 스킬 사용 요청. 방향은 공격 박스 판정용. */
+    public record UseSkillRequest(String skillId, String dir) {}
+
+    /** 스킬 발동 브로드캐스트. 맵 내 모든 클라가 이펙트 렌더링. */
+    public record SkillUsedPacket(int playerId, String skillId, String dir) {}
 }
