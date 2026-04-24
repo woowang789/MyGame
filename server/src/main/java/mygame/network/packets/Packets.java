@@ -43,6 +43,19 @@ public final class Packets {
             java.util.List<DroppedItemState> items
     ) {}
 
+    /** 스킬 메타(클라 HUD · 쿨다운 예측용). */
+    public record SkillMetaEntry(String id, String name, int mpCost, long cooldownMs) {}
+
+    /**
+     * 정적 게임 메타데이터. 서버 레지스트리를 단일 진실 원천(SSoT)으로 삼기 위해
+     * JOIN 직후 한 번 전송한다. 클라 HUD 의 장비 판별과 스킬 쿨다운 HUD 는
+     * 이 패킷으로 초기화된다.
+     */
+    public record MetaPacket(
+            java.util.List<String> equipmentIds,
+            java.util.List<SkillMetaEntry> skills
+    ) {}
+
     /** 다른 플레이어가 맵에 들어왔음을 알리는 브로드캐스트. */
     public record PlayerJoinedPacket(PlayerState player) {}
 

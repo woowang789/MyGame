@@ -48,4 +48,9 @@ public final class SkillRegistry {
                 .filter(s -> s.job().equals(job) || s.job().equals(Skill.JOB_BEGINNER))
                 .toList();
     }
+
+    /** 등록된 모든 스킬. META 패킷 생성·테스트용. 반환 순서는 등록 순서를 보존한다. */
+    public static List<Skill> all() {
+        return List.copyOf(ALL_SKILLS.values());
+    }
 }

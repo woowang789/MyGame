@@ -6,20 +6,6 @@ import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import mygame.game.CombatService;
-import mygame.game.GameLoop;
-import mygame.game.GameMap;
-import mygame.game.ProgressionSystem;
-import mygame.game.World;
-import mygame.game.skill.AttackBox;
-import mygame.game.entity.Monster;
-import mygame.game.entity.Player;
-import mygame.game.event.EventBus;
-import mygame.game.event.GameEvent;
-import mygame.game.event.GameEvent.ExpGained;
-import mygame.game.event.GameEvent.LeveledUp;
-import mygame.network.packets.Packets.ChangeMapRequest;
-import mygame.network.packets.Packets.JoinRequest;
 import mygame.auth.AuthService;
 import mygame.db.AccountRepository;
 import mygame.db.Database;
@@ -27,27 +13,30 @@ import mygame.db.JdbcAccountRepository;
 import mygame.db.JdbcPlayerRepository;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
+import mygame.game.CombatService;
+import mygame.game.GameLoop;
+import mygame.game.GameMap;
+import mygame.game.ProgressionSystem;
+import mygame.game.World;
+import mygame.game.entity.Monster;
+import mygame.game.entity.Player;
+import mygame.game.event.EventBus;
+import mygame.game.event.GameEvent;
+import mygame.game.event.GameEvent.ExpGained;
+import mygame.game.event.GameEvent.LeveledUp;
 import mygame.game.item.DroppedItem;
-import mygame.network.packets.Packets.AttackRequest;
-import mygame.network.packets.Packets.ChatMessage;
-import mygame.network.packets.Packets.ChatRequest;
-import mygame.network.packets.Packets.DroppedItemState;
-import mygame.network.packets.Packets.EquipRequest;
-import mygame.network.packets.Packets.EquipmentPacket;
-import mygame.network.packets.Packets.InventoryPacket;
-import mygame.network.packets.Packets.ExpUpdatedPacket;
-import mygame.network.packets.Packets.LevelUpPacket;
-import mygame.network.packets.Packets.StatsPacket;
-import mygame.network.packets.Packets.UnequipRequest;
-import mygame.game.item.EquipSlot;
 import mygame.game.item.ItemRegistry;
-import mygame.game.skill.Skill;
-import mygame.game.skill.SkillContext;
 import mygame.game.skill.SkillRegistry;
-import mygame.network.packets.Packets.SkillUsedPacket;
-import mygame.network.packets.Packets.UseSkillRequest;
+import mygame.network.packets.Packets.ChangeMapRequest;
+import mygame.network.packets.Packets.DroppedItemState;
+import mygame.network.packets.Packets.ExpUpdatedPacket;
+import mygame.network.packets.Packets.InventoryPacket;
+import mygame.network.packets.Packets.JoinRequest;
+import mygame.network.packets.Packets.LevelUpPacket;
 import mygame.network.packets.Packets.MapChangedPacket;
-import mygame.network.packets.Packets.MonsterDamagedPacket;
+import mygame.network.packets.Packets.MesoUpdatedPacket;
+import mygame.network.packets.Packets.MetaPacket;
+import mygame.network.packets.Packets.SkillMetaEntry;
 import mygame.network.packets.Packets.MonsterState;
 import mygame.network.packets.Packets.MoveRequest;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
@@ -70,6 +59,9 @@ import org.slf4j.LoggerFactory;
  *       대상 맵에 추가(PLAYER_JOIN 브로드캐스트). 전환 당사자에게는
  *       {@code MAP_CHANGED} 로 새 맵의 현재 플레이어 목록을 전달한다.
  * </ul>
+ *
+ * <p>핸들러는 도메인별로 {@link ChatHandler}/{@link InventoryHandler}/{@link CombatHandler} 로 분리했고,
+ * 이 클래스는 세션 수명 주기(JOIN/ LEAVE/ MOVE/ CHANGE_MAP) 와 DB 연동만 책임진다.
  */
 public final class GameServer extends WebSocketServer {
 
@@ -88,6 +80,10 @@ public final class GameServer extends WebSocketServer {
     private final AccountRepository accountRepo;
     private final AuthSessions auth;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
+    private final SessionNotifier notifier = new SessionNotifier(json);
+    private final ChatHandler chatHandler = new ChatHandler(world);
+    private final InventoryHandler inventoryHandler = new InventoryHandler(world, json, notifier);
+    private final CombatHandler combatHandler = new CombatHandler(world, combatService, notifier);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
@@ -104,7 +100,7 @@ public final class GameServer extends WebSocketServer {
         this.playerRepo = new JdbcPlayerRepository(database);
         this.accountRepo = new JdbcAccountRepository(database);
         this.auth = new AuthSessions(new AuthService(accountRepo), json);
-        world.setCombatListener(new PlayerCombatHandler(world, this::sendStats));
+        world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
         registerHandlers();
     }
 
@@ -115,14 +111,14 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("JOIN", this::handleJoin);
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
-        dispatcher.register("ATTACK", this::handleAttack);
-        dispatcher.register("PICKUP", this::handlePickup);
-        dispatcher.register("CHAT", this::handleChat);
-        dispatcher.register("EQUIP", this::handleEquip);
-        dispatcher.register("UNEQUIP", this::handleUnequip);
-        dispatcher.register("USE_SKILL", this::handleUseSkill);
-        dispatcher.register("USE_ITEM", this::handleUseItem);
-        dispatcher.register("DROP_ITEM", this::handleDropItem);
+        dispatcher.register("ATTACK", combatHandler::handleAttack);
+        dispatcher.register("USE_SKILL", combatHandler::handleUseSkill);
+        dispatcher.register("PICKUP", inventoryHandler::handlePickup);
+        dispatcher.register("EQUIP", inventoryHandler::handleEquip);
+        dispatcher.register("UNEQUIP", inventoryHandler::handleUnequip);
+        dispatcher.register("USE_ITEM", inventoryHandler::handleUseItem);
+        dispatcher.register("DROP_ITEM", inventoryHandler::handleDropItem);
+        dispatcher.register("CHAT", chatHandler::handle);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -180,21 +176,12 @@ public final class GameServer extends WebSocketServer {
                         player.exp(),
                         player.meso(),
                         player.inventory().snapshot(),
-                        equipmentSnapshotAsStringMap(player));
+                        SessionNotifier.equipmentSnapshotAsStringMap(player));
                 log.info("플레이어 저장: name={}, lv={}, exp={}", player.name(), player.level(), player.exp());
             } catch (Exception e) {
                 log.error("플레이어 저장 실패: name={}", player.name(), e);
             }
         }
-    }
-
-    /** Equipment 의 EnumMap 을 문자열 키 맵(DB · JSON 친화)으로 변환. */
-    private static Map<String, String> equipmentSnapshotAsStringMap(Player player) {
-        Map<String, String> m = new java.util.LinkedHashMap<>();
-        for (Map.Entry<EquipSlot, String> e : player.equipment().snapshot().entrySet()) {
-            m.put(e.getKey().name(), e.getValue());
-        }
-        return m;
     }
 
     @Override
@@ -219,7 +206,7 @@ public final class GameServer extends WebSocketServer {
         gameLoop.start();
     }
 
-    // --- 핸들러 ---
+    // --- 세션 수명 주기 핸들러 ---
 
     private void handleJoin(PacketContext ctx) throws Exception {
         // Phase L: 인증 선행 필수
@@ -277,6 +264,9 @@ public final class GameServer extends WebSocketServer {
                 map.droppedItems().stream().map(GameServer::toItemState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
+        // META: 정적 레지스트리(아이템·스킬) 를 단일 진실 원천으로 내려 보낸다.
+        // 클라 HUD 의 장비 판별, 스킬 쿨다운 HUD 가 이 패킷으로 초기화된다.
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "META", buildMeta()));
         map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
 
         // 복원된 진행도/인벤토리/장비/최종 스탯을 당사자에게 전달
@@ -285,117 +275,8 @@ public final class GameServer extends WebSocketServer {
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
                 new InventoryPacket(player.inventory().snapshot())));
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MESO",
-                new mygame.network.packets.Packets.MesoUpdatedPacket(player.meso(), 0)));
-        sendEquipmentAndStats(player);
-    }
-
-    // --- Phase I 장비 핸들러 ---
-
-    private void handleEquip(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) return;
-        EquipRequest req = ctx.json().treeToValue(ctx.body(), EquipRequest.class);
-        String itemId = req.templateId();
-        if (itemId == null || !ItemRegistry.isEquipment(itemId)) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "장비 아이템이 아닙니다."));
-            return;
-        }
-        if (!player.inventory().remove(itemId, 1)) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "인벤토리에 해당 장비가 없습니다."));
-            return;
-        }
-        String replaced = player.equipment().equip(itemId);
-        // 기존 장비는 인벤토리로 되돌린다(교체). 변경이 원자적이도록 이 순서가 중요.
-        if (replaced != null) player.inventory().add(replaced, 1);
-        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
-                new InventoryPacket(player.inventory().snapshot())));
-        sendEquipmentAndStats(player);
-    }
-
-    private void handleUnequip(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) return;
-        UnequipRequest req = ctx.json().treeToValue(ctx.body(), UnequipRequest.class);
-        EquipSlot slot;
-        try {
-            slot = EquipSlot.valueOf(req.slot());
-        } catch (IllegalArgumentException e) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "알 수 없는 슬롯: " + req.slot()));
-            return;
-        }
-        String removed = player.equipment().unequip(slot);
-        if (removed == null) return;
-        player.inventory().add(removed, 1);
-        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
-                new InventoryPacket(player.inventory().snapshot())));
-        sendEquipmentAndStats(player);
-    }
-
-    // --- Phase M 스킬 핸들러 ---
-
-    private void handleUseSkill(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) return;
-        if (player.isDead()) return;
-        UseSkillRequest req = ctx.json().treeToValue(ctx.body(), UseSkillRequest.class);
-        String skillId = req.skillId();
-        if (skillId == null || !SkillRegistry.exists(skillId)) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "알 수 없는 스킬: " + skillId));
-            return;
-        }
-        Skill skill = SkillRegistry.get(skillId);
-
-        // 직업 태그 검증. 초보자는 BEGINNER 스킬만 사용 가능. 전직 Phase 확장 지점.
-        if (!Skill.JOB_BEGINNER.equals(skill.job())) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "아직 배우지 않은 스킬입니다."));
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (!player.tryActivateSkill(skill.id(), skill.cooldownMs(), now)) {
-            // 쿨다운 중. 스팸 방지를 위해 조용히 드롭하고 클라 HUD 가 쿨다운을 표시.
-            return;
-        }
-        if (!player.spendMp(skill.mpCost())) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "MP 가 부족합니다."));
-            return;
-        }
-
-        GameMap map = world.map(player.mapId());
-        if (map == null) return;
-        String dir = (req.dir() == null || req.dir().isBlank()) ? player.facing() : req.dir();
-        SkillContext skillCtx = SkillContext.of(player, map, dir, now);
-        skill.apply(skillCtx);
-
-        // 이펙트용 브로드캐스트 먼저(근접/원거리 모든 스킬 공통).
-        map.broadcast("SKILL_USED", new SkillUsedPacket(player.id(), skill.id(), dir));
-
-        // 몬스터 피해/사망 결과 송출. 스킬 구현체가 이미 Monster.applyDamage 를 호출했으므로
-        // 여기서는 CombatService.finishKill 로 드롭/EXP/브로드캐스트만 마무리한다.
-        for (var hit : skillCtx.outcome().hits()) {
-            map.broadcast("MONSTER_DAMAGED",
-                    new MonsterDamagedPacket(hit.monsterId(), hit.damage(), hit.remainingHp(), player.id()));
-            if (!hit.killed()) continue;
-            Monster target = map.monster(hit.monsterId());
-            if (target != null) combatService.finishKill(map, player, target);
-        }
-
-        // MP / 쿨다운 상태 동기화. 스탯 패킷이 현재 mp 를 포함하므로 한 번 보내면 된다.
-        sendStats(player);
-    }
-
-    /** 본인에게 장비 스냅샷과 최종 스탯을 함께 전달. 공격 피해량 등 UI 에 영향. */
-    private void sendEquipmentAndStats(Player player) {
-        player.connection().send(PacketEnvelope.wrap(json, "EQUIPMENT",
-                new EquipmentPacket(player.id(), equipmentSnapshotAsStringMap(player))));
-        sendStats(player);
-    }
-
-    /** 최종 스탯 + 현재 HP/MP 를 본인에게 전달. 스킬 사용·장비 변경·피격 시 모두 호출. */
-    private void sendStats(Player player) {
-        mygame.game.stat.Stats s = player.effectiveStats();
-        player.connection().send(PacketEnvelope.wrap(json, "STATS",
-                new StatsPacket(s.maxHp(), s.maxMp(), s.attack(), s.speed(), player.hp(), player.mp())));
+                new MesoUpdatedPacket(player.meso(), 0)));
+        notifier.sendEquipmentAndStats(player);
     }
 
     private void handleMove(PacketContext ctx) throws Exception {
@@ -461,159 +342,18 @@ public final class GameServer extends WebSocketServer {
         target.broadcastExcept(player.id(), "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
     }
 
+    private static MetaPacket buildMeta() {
+        var skills = SkillRegistry.all().stream()
+                .map(s -> new SkillMetaEntry(s.id(), s.name(), s.mpCost(), s.cooldownMs()))
+                .toList();
+        return new MetaPacket(ItemRegistry.equipmentIds(), skills);
+    }
+
     private static MonsterState toMonsterState(Monster m) {
         return new MonsterState(m.id(), m.template(), m.x(), m.y(), m.hp(), m.maxHp());
     }
 
     private static DroppedItemState toItemState(DroppedItem d) {
         return new DroppedItemState(d.id(), d.templateId(), d.x(), d.y());
-    }
-
-    private static final long DROP_TTL_MS = 60_000;
-    private static final double PICKUP_RANGE = 40;
-
-    private static final int MAX_CHAT_LEN = 200;
-
-    private void handleChat(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) return;
-        ChatRequest req = ctx.json().treeToValue(ctx.body(), ChatRequest.class);
-        if (req.message() == null || req.message().isBlank()) return;
-
-        String msg = req.message();
-        if (msg.length() > MAX_CHAT_LEN) msg = msg.substring(0, MAX_CHAT_LEN);
-
-        String scope = req.scope() == null ? "ALL" : req.scope();
-        switch (scope) {
-            case "ALL" -> {
-                GameMap map = world.map(player.mapId());
-                if (map != null) {
-                    map.broadcast("CHAT", new ChatMessage("ALL", player.name(), msg));
-                }
-            }
-            case "WHISPER" -> {
-                Player target = world.playerByName(req.target());
-                if (target == null) {
-                    ctx.conn().send(PacketEnvelope.error(ctx.json(), "no such player: " + req.target()));
-                    return;
-                }
-                // 보낸 사람·받는 사람 모두에게 같은 메시지를 echo 해 로컬 UI 가 구성되도록 한다.
-                String payload = PacketEnvelope.wrap(ctx.json(), "CHAT",
-                        new ChatMessage("WHISPER:" + target.name(), player.name(), msg));
-                ctx.conn().send(payload);
-                if (target.id() != player.id() && target.connection().isOpen()) {
-                    target.connection().send(payload);
-                }
-            }
-            default -> ctx.conn().send(PacketEnvelope.error(ctx.json(), "unknown scope"));
-        }
-    }
-
-    private void handlePickup(PacketContext ctx) {
-        Player player = ctx.player();
-        if (player == null) return;
-        GameMap map = world.map(player.mapId());
-        if (map == null) return;
-
-        for (DroppedItem d : map.droppedItems()) {
-            double dx = d.x() - player.x();
-            double dy = d.y() - player.y();
-            if (Math.abs(dx) > PICKUP_RANGE || Math.abs(dy) > PICKUP_RANGE) continue;
-
-            if (d.isMeso()) {
-                // 메소는 지갑으로 — 용량 제한과 무관.
-                if (map.takeDroppedItem(d.id()) == null) continue;
-                int gained = d.amount();
-                player.addMeso(gained);
-                player.connection().send(PacketEnvelope.wrap(json, "MESO",
-                        new mygame.network.packets.Packets.MesoUpdatedPacket(player.meso(), gained)));
-                continue;
-            }
-
-            // 인벤토리 용량 선검사: 가득 찬 상태라면 드롭을 유지하고 사용자에게 알림.
-            // 같은 id 스택 증가는 항상 허용되므로 checkAdd 전에 시도해봐야 한다.
-            if (map.takeDroppedItem(d.id()) == null) continue;
-            boolean added = player.inventory().add(d.templateId(), 1);
-            if (!added) {
-                // 실패 — 아이템을 다시 맵에 되돌리고 사용자에게 경고.
-                map.addDroppedItem(d);
-                player.connection().send(PacketEnvelope.error(json, "인벤토리가 가득 찼습니다."));
-                continue;
-            }
-            player.connection().send(PacketEnvelope.wrap(json, "INVENTORY",
-                    new InventoryPacket(player.inventory().snapshot())));
-        }
-    }
-
-    // --- Phase D: 소비 / 드롭 ---
-
-    private void handleUseItem(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) return;
-        if (player.isDead()) return;
-        var req = ctx.json().treeToValue(ctx.body(),
-                mygame.network.packets.Packets.UseItemRequest.class);
-        String id = req.templateId();
-        if (id == null) return;
-        var template = mygame.game.item.ItemRegistry.get(id);
-        if (template.type() != mygame.game.item.ItemTemplate.ItemType.CONSUMABLE) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "소비 아이템이 아닙니다."));
-            return;
-        }
-        if (!player.inventory().remove(id, 1)) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "보유하고 있지 않은 아이템입니다."));
-            return;
-        }
-        var effect = template.use();
-        if (effect.heal() > 0) player.restoreHp(effect.heal());
-        if (effect.manaHeal() > 0) player.restoreMp(effect.manaHeal());
-        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
-                new InventoryPacket(player.inventory().snapshot())));
-        sendStats(player);
-    }
-
-    private void handleDropItem(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) return;
-        if (player.isDead()) return;
-        var req = ctx.json().treeToValue(ctx.body(),
-                mygame.network.packets.Packets.DropItemRequest.class);
-        String id = req.templateId();
-        int amount = Math.max(1, req.amount());
-        if (id == null) return;
-        if (!player.inventory().remove(id, amount)) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "버릴 수량이 충분하지 않습니다."));
-            return;
-        }
-        GameMap map = world.map(player.mapId());
-        if (map == null) return;
-        // 드롭은 플레이어 발밑에 놓는다. TTL 은 기본 60초.
-        map.addDroppedItem(new DroppedItem(
-                world.itemIdSeq().getAndIncrement(),
-                id, player.x(), player.y(), 60_000, amount));
-        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
-                new InventoryPacket(player.inventory().snapshot())));
-    }
-
-    // --- 공격 ---
-
-    private void handleAttack(PacketContext ctx) throws Exception {
-        Player player = ctx.player();
-        if (player == null) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "join required"));
-            return;
-        }
-        if (player.isDead()) return;
-        AttackRequest req = ctx.json().treeToValue(ctx.body(), AttackRequest.class);
-        GameMap map = world.map(player.mapId());
-        if (map == null) return;
-
-        String dir = (req.dir() == null || req.dir().isBlank()) ? player.facing() : req.dir();
-        // 데미지 = 최종 스탯의 attack (Decorator 체인: 레벨 + 장비 합산).
-        int damage = player.effectiveStats().attack();
-        // 기본 공격은 1마리만. 범위 내 가장 가까운 몬스터를 고른다.
-        for (Monster m : AttackBox.nearestInFront(player, map, dir, 1.0, 1)) {
-            combatService.damageMonster(map, player, m, damage);
-        }
     }
 }

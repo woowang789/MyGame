@@ -4,7 +4,9 @@ import { DroppedItemSprite } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
-import { EQUIPMENT_IDS, HudView, SKILL_META } from '../ui/HudView';
+import { ChatController } from '../ui/ChatController';
+import { EffectFactory } from '../ui/EffectFactory';
+import { applyMeta, EQUIPMENT_IDS, HudView, SKILL_META } from '../ui/HudView';
 import { MapController } from './MapController';
 import {
   generatePlayerTexture,
@@ -78,6 +80,8 @@ export class GameScene extends Phaser.Scene {
   /** true 면 사망 상태. 부활 패킷 수신 시 false 로 복귀. 사망 중에는 입력 전반을 차단한다. */
   private isDead = false;
   private readonly hud = new HudView();
+  private readonly effects: EffectFactory;
+  private readonly chat: ChatController;
 
   private currentMapId = 'henesys';
   private mapController!: MapController;
@@ -86,6 +90,8 @@ export class GameScene extends Phaser.Scene {
     super('GameScene');
     this.network = network;
     this.playerName = session.username;
+    this.effects = new EffectFactory(this);
+    this.chat = new ChatController(this, network);
   }
 
   preload(): void {
@@ -131,7 +137,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setPlayerName(this.playerName);
     // localStorage 네임스페이스: 캐릭터 이름 단위로 슬롯 순서를 분리.
     this.hud.setAccountKey(this.playerName);
-    this.setupChatInput();
+    this.chat.setup();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
     this.hud.bindInventoryInteractions();
     // 인벤/장비 슬롯의 더블클릭 → 서버 패킷으로 위임.
@@ -163,6 +169,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupNetwork(): void {
+    this.network.on('META', (p) => {
+      applyMeta({
+        equipmentIds: (p.equipmentIds ?? []) as string[],
+        skills: (p.skills ?? []) as { id: string; name: string; mpCost: number; cooldownMs: number }[]
+      });
+    });
     this.network.on('WELCOME', (p) => this.onWelcome(p));
     this.network.on('PLAYER_JOIN', (p) => this.onPlayerJoin(p));
     this.network.on('PLAYER_MOVE', (p) => this.onPlayerMove(p));
@@ -188,7 +200,7 @@ export class GameScene extends Phaser.Scene {
     this.network.on('ERROR', (p) => {
       const msg = String(p.message ?? '');
       console.warn('[Server ERROR]', msg);
-      this.appendChatLog('sys', `[오류] ${msg}`);
+      this.chat.append('sys', `[오류] ${msg}`);
       // 가장 최근 서버 에러를 기억했다가 소켓이 끊길 때 사용자에게 안내한다.
       this.lastServerError = msg;
     });
@@ -243,7 +255,6 @@ export class GameScene extends Phaser.Scene {
     const x = p.x as number;
     const y = p.y as number;
     const others = (p.others ?? []) as PlayerStateMsg[];
-    console.log(`[Game] 맵 전환: ${mapId} (${x},${y}), 기존 플레이어 ${others.length}명`);
 
     // 원격 플레이어·몬스터 모두 제거 후 새 맵 스냅샷으로 교체
     for (const r of this.remotes.values()) r.destroy();
@@ -333,7 +344,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.updateMeso(meso);
     if (gained > 0) {
       // 획득 시 채팅 로그에 시스템 메시지로 남겨 피드백을 준다.
-      this.appendChatLog('sys', `+${gained.toLocaleString('ko-KR')} 메소 획득 (보유 ${meso.toLocaleString('ko-KR')})`);
+      this.chat.append('sys', `+${gained.toLocaleString('ko-KR')} 메소 획득 (보유 ${meso.toLocaleString('ko-KR')})`);
     }
   }
 
@@ -365,9 +376,9 @@ export class GameScene extends Phaser.Scene {
     const y = playerId === this.myId
       ? this.player.y
       : this.remotes.get(playerId)?.sprite.y ?? 0;
-    this.spawnDamageNumber(x, y - 28, dmg);
+    this.effects.spawnDamageNumber(x, y - 28, dmg);
     if (playerId === this.myId) {
-      this.flashPlayerDamage();
+      this.effects.flashSpriteDamage(this.player);
       this.hud.updateHpImmediate(currentHp, maxHp);
       this.applyPlayerKnockback(p.attackerId as number);
     }
@@ -429,80 +440,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private flashPlayerDamage(): void {
-    // 서버 IFRAME_MS(1500ms) 와 동기: 150ms × yoyo × repeat 4 = 1500ms 깜빡임.
-    this.player.setTint(0xff4444);
-    this.tweens.add({
-      targets: this.player,
-      alpha: { from: 0.3, to: 1 },
-      duration: 150,
-      yoyo: true,
-      repeat: 4,
-      onComplete: () => {
-        if (!this.player.active) return;
-        this.player.clearTint();
-        this.player.setAlpha(1);
-      }
-    });
-  }
-
-  private spawnDamageNumber(x: number, y: number, dmg: number): void {
-    const txt = this.add
-      .text(x, y, `-${dmg}`, { fontSize: '14px', color: '#ff6b6b', fontStyle: 'bold' })
-      .setOrigin(0.5, 1)
-      .setStroke('#3a0a0a', 3);
-    this.tweens.add({
-      targets: txt,
-      y: y - 24,
-      alpha: 0,
-      duration: 700,
-      onComplete: () => txt.destroy()
-    });
-  }
-
   private onSkillUsed(p: Packet): void {
     const playerId = p.playerId as number;
     const skillId = p.skillId as string;
-    // 시전자 좌표
     const x = playerId === this.myId
       ? this.player.x
       : this.remotes.get(playerId)?.sprite.x ?? 0;
     const y = playerId === this.myId
       ? this.player.y
       : this.remotes.get(playerId)?.sprite.y ?? 0;
-    this.spawnSkillEffect(skillId, x, y, (p.dir as string) ?? 'right');
-  }
-
-  /** 스킬별 간단한 이펙트. 색상·크기로 구분. */
-  private spawnSkillEffect(skillId: string, x: number, y: number, dir: string): void {
-    const color = skillId === 'power_strike'
-      ? 0xffb347
-      : skillId === 'triple_blow'
-      ? 0xff6bd6
-      : 0x7bd4ff;
-    const offset = dir === 'left' ? -36 : 36;
-    if (skillId === 'recovery') {
-      // 자기 회복: 플레이어 위에 상승 원형
-      const fx = this.add.circle(x, y, 20, color, 0.6).setStrokeStyle(2, 0xffffff);
-      this.tweens.add({
-        targets: fx,
-        y: y - 50,
-        alpha: 0,
-        scale: 1.6,
-        duration: 600,
-        onComplete: () => fx.destroy()
-      });
-      return;
-    }
-    const slash = this.add.rectangle(x + offset, y, 80, 32, color, 0.7).setStrokeStyle(2, 0xffffff);
-    this.tweens.add({
-      targets: slash,
-      alpha: 0,
-      scaleX: 1.6,
-      scaleY: 1.2,
-      duration: 220,
-      onComplete: () => slash.destroy()
-    });
+    this.effects.spawnSkillEffect(skillId, x, y, (p.dir as string) ?? 'right');
   }
 
   /** 인벤토리에서 장비로 보이는 첫 아이템 ID 반환(없으면 null). */
@@ -514,24 +461,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    const body = this.player.body as Phaser.Physics.Arcade.Body;
-
     // 채팅 입력 중 또는 사망 중에는 게임 입력을 전부 건너뛴다.
     // 좌우 속도도 잠가 두어 Q/E 등이 텍스트에 섞이거나, 사망 후 키 입력으로
     // 시체가 움직이는 현상을 막는다.
-    if (this.isChatFocused() || this.isDead) {
+    if (this.chat.isFocused() || this.isDead) {
       this.player.setVelocityX(0);
       for (const r of this.remotes.values()) r.update(delta);
       for (const m of this.monsters.values()) m.update(delta);
       return;
     }
 
+    this.handleMovement();
+    this.handleActions();
+    this.handleSkills(time);
+    this.handlePortalOrJump();
+
+    for (const r of this.remotes.values()) r.update(delta);
+    for (const m of this.monsters.values()) m.update(delta);
+
+    this.sendNetworkUpdates(time);
+  }
+
+  /** 좌/우 입력 → 속도와 facing 갱신. 넉백 구간에는 입력을 무시. */
+  private handleMovement(): void {
     // 넉백 구간에는 입력으로 속도를 덮어쓰지 않고 관성·중력에 맡긴다.
     // (onPlayerDamaged 가 performance.now() 기준으로 knockbackUntil 을 세팅.)
-    const knockback = performance.now() < this.knockbackUntil;
-    if (knockback) {
-      // 방향 플립은 유지. 수평 속도는 onPlayerDamaged 에서 이미 설정된 값이 감쇠한다.
-    } else if (this.cursors.left.isDown) {
+    if (performance.now() < this.knockbackUntil) return;
+
+    if (this.cursors.left.isDown) {
       this.player.setVelocityX(-MOVE_SPEED);
       this.facing = 'left';
       this.player.setFlipX(true);
@@ -542,11 +499,13 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.player.setVelocityX(0);
     }
+  }
 
-    // 공격 (Space)
+  /** Space/Q/E/I/Esc 등 1프레임 단발 액션 입력. */
+  private handleActions(): void {
     if (Phaser.Input.Keyboard.JustDown(this.attackKey) && this.network.isOpen) {
       this.network.send({ type: 'ATTACK', dir: this.facing });
-      this.spawnAttackEffect();
+      this.effects.spawnAttackSlash(this.player.x, this.player.y, this.facing);
     }
 
     // Q: 인벤토리 첫 장비 착용. E: 착용한 모든 슬롯 해제.
@@ -567,41 +526,47 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.escKey) && this.hud.isInventoryOpen()) {
       this.hud.closeInventory();
     }
+  }
 
-    // 1/2/3: 스킬 사용. 쿨다운 예측으로 중복 패킷 방지.
+  /** 1/2/3 스킬 + HUD 쿨다운 갱신. 쿨다운 예측으로 중복 패킷 방지. */
+  private handleSkills(time: number): void {
     for (const [skillId, key] of Object.entries(this.skillKeys)) {
       if (!Phaser.Input.Keyboard.JustDown(key) || !this.network.isOpen) continue;
       const until = this.skillCooldownUntil.get(skillId) ?? 0;
       if (time < until) continue;
+      // META 패킷 도착 전 스킬 사용 시 쿨다운 예측은 건너뛴다. 서버가 권위적이므로
+      // 패킷이 도착하기 전 눌러도 서버 쿨다운이 최종 결과를 보장한다.
       const meta = SKILL_META[skillId];
-      this.skillCooldownUntil.set(skillId, time + meta.cooldownMs);
+      if (meta) this.skillCooldownUntil.set(skillId, time + meta.cooldownMs);
       this.network.send({ type: 'USE_SKILL', skillId, dir: this.facing });
     }
-
     // 스킬 쿨다운 HUD 갱신(60Hz 갱신 부담 적음, 문자열 변환만).
     this.hud.updateSkillCooldowns(time, this.skillCooldownUntil);
+  }
 
-    // 포털 진입 / 점프: UP 키는 두 용도로 쓰인다.
-    // 포털 위에서 UP 을 누르면 맵 이동(점프보다 우선), 아니면 평소처럼 점프.
-    // 이전 프레임 겹침 여부는 더 이상 기억할 필요가 없어 activePortalIndex 는 쓰지 않는다.
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
-      const idx = this.mapController.findOverlappingPortalIndex();
-      if (idx !== -1 && this.network.isOpen && this.myId !== -1) {
-        const portal = this.mapController.portalAt(idx)!;
-        this.network.send({
-          type: 'CHANGE_MAP',
-          targetMap: portal.targetMap,
-          targetX: portal.targetX,
-          targetY: portal.targetY
-        });
-      } else if (body.blocked.down) {
-        this.player.setVelocityY(JUMP_VELOCITY);
-      }
+  /**
+   * UP 키 이중 용도: 포털 위면 맵 이동(점프보다 우선), 아니면 바닥에 붙어 있을 때만 점프.
+   * 이전 프레임 겹침 여부는 더 이상 기억할 필요가 없어 activePortalIndex 는 쓰지 않는다.
+   */
+  private handlePortalOrJump(): void {
+    if (!Phaser.Input.Keyboard.JustDown(this.cursors.up)) return;
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    const idx = this.mapController.findOverlappingPortalIndex();
+    if (idx !== -1 && this.network.isOpen && this.myId !== -1) {
+      const portal = this.mapController.portalAt(idx)!;
+      this.network.send({
+        type: 'CHANGE_MAP',
+        targetMap: portal.targetMap,
+        targetX: portal.targetX,
+        targetY: portal.targetY
+      });
+    } else if (body.blocked.down) {
+      this.player.setVelocityY(JUMP_VELOCITY);
     }
+  }
 
-    for (const r of this.remotes.values()) r.update(delta);
-    for (const m of this.monsters.values()) m.update(delta);
-
+  /** 주기적 MOVE 패킷 + 근접 드롭 자동 픽업 요청. */
+  private sendNetworkUpdates(time: number): void {
     // 자동 픽업: 가까운 드롭 아이템이 있을 때 200ms 간격으로 서버에 요청
     if (time - this.lastPickupAttemptAt >= 200 && this.droppedItems.size > 0) {
       const px = this.player.x;
@@ -620,6 +585,7 @@ export class GameScene extends Phaser.Scene {
     if (time - this.lastMoveSentAt >= MOVE_PACKET_INTERVAL_MS) {
       this.lastMoveSentAt = time;
       if (this.network.isOpen && this.myId !== -1) {
+        const body = this.player.body as Phaser.Physics.Arcade.Body;
         this.network.send({
           type: 'MOVE',
           x: Math.round(this.player.x),
@@ -638,19 +604,7 @@ export class GameScene extends Phaser.Scene {
     const gained = p.gained as number;
     this.hud.updateExp(level, exp, toNext);
     if (gained > 0) {
-      const txt = this.add
-        .text(this.player.x, this.player.y - 36, `+${gained} EXP`, {
-          fontSize: '12px',
-          color: '#aee1ff'
-        })
-        .setOrigin(0.5, 1);
-      this.tweens.add({
-        targets: txt,
-        y: txt.y - 24,
-        alpha: 0,
-        duration: 800,
-        onComplete: () => txt.destroy()
-      });
+      this.effects.spawnExpGain(this.player.x, this.player.y, gained);
     }
   }
 
@@ -659,156 +613,10 @@ export class GameScene extends Phaser.Scene {
     const id = p.playerId as number;
     const x = id === this.myId ? this.player.x : this.remotes.get(id)?.sprite.x ?? this.player.x;
     const y = id === this.myId ? this.player.y : this.remotes.get(id)?.sprite.y ?? this.player.y;
-    const txt = this.add
-      .text(x, y - 50, `LEVEL UP! Lv ${level}`, {
-        fontSize: '18px',
-        color: '#ffd700',
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5, 1)
-      .setStroke('#6b3200', 3);
-    this.tweens.add({
-      targets: txt,
-      y: txt.y - 40,
-      alpha: 0,
-      duration: 1400,
-      onComplete: () => txt.destroy()
-    });
-  }
-
-  private setupChatInput(): void {
-    const input = document.getElementById('chat-input') as HTMLInputElement | null;
-    if (!input) return;
-
-    // 게임 중 Enter → 입력창 포커스. 입력창에서 Enter → 전송.
-    // 입력 중에는 Phaser 가 키를 가로채지 않도록 disableGlobalCapture 사용.
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && document.activeElement !== input) {
-        e.preventDefault();
-        input.focus();
-      }
-    });
-
-    // 채팅 입력 중 blur 트리거:
-    //   Escape           → 취소 (입력값 폐기)
-    //   Enter            → 전송 후 blur. 빈 값이면 그냥 blur.
-    //   방향키(↑↓←→)    → blur 후 해당 키를 다음 프레임부터 게임 입력으로 쓸 수 있게.
-    //                      preventDefault 하지 않아야 Phaser 쪽 keydown 이 정상 수신.
-    const arrowKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        input.blur();
-        input.value = '';
-      } else if (e.key === 'Enter') {
-        const text = input.value.trim();
-        input.value = '';
-        input.blur();
-        if (!text) return;
-        this.sendChat(text);
-      } else if (arrowKeys.has(e.key)) {
-        input.blur();
-      }
-    });
-
-    // 입력창 포커스 중에는 Phaser 키 캡처를 끄고, 벗어나면 켠다.
-    // 추가로 blur 시 resetKeys() 를 호출해 입력창에서 눌렸던 Q/E 가 JustDown 으로
-    // 흘러들어가지 않도록 내부 키 상태를 초기화한다.
-    const box = document.getElementById('chat-box');
-    input.addEventListener('focus', () => {
-      this.input.keyboard?.disableGlobalCapture();
-      box?.classList.add('expanded');
-      box?.classList.remove('ghost');
-      this.clearGhostTimer();
-    });
-    input.addEventListener('blur', () => {
-      this.input.keyboard?.enableGlobalCapture();
-      this.input.keyboard?.resetKeys();
-      box?.classList.remove('expanded');
-    });
-  }
-
-  /**
-   * 새 메시지 도착 시 채팅 박스를 잠시 반투명 노출(.ghost). 포커스 중이면 건너뛴다.
-   * 일정 시간 뒤 자동 제거. 포커스가 시작되면 타이머를 해제해 깜빡임을 막는다.
-   */
-  private ghostTimer: number | null = null;
-  private showChatGhost(): void {
-    const box = document.getElementById('chat-box');
-    if (!box || box.classList.contains('expanded')) return;
-    box.classList.add('ghost');
-    this.clearGhostTimer();
-    this.ghostTimer = window.setTimeout(() => {
-      box.classList.remove('ghost');
-      this.ghostTimer = null;
-    }, 4000);
-  }
-  private clearGhostTimer(): void {
-    if (this.ghostTimer !== null) {
-      window.clearTimeout(this.ghostTimer);
-      this.ghostTimer = null;
-    }
-  }
-
-  /** 채팅 입력창이 포커스 상태인지. 게임 단축키(Q/E/숫자 등) 판정에서 제외하는 데 쓴다. */
-  private isChatFocused(): boolean {
-    return document.activeElement?.id === 'chat-input';
-  }
-
-  private sendChat(text: string): void {
-    if (!this.network.isOpen) return;
-    if (text.startsWith('/w ') || text.startsWith('/귓 ')) {
-      const rest = text.slice(text.indexOf(' ') + 1).trim();
-      const sp = rest.indexOf(' ');
-      if (sp < 0) {
-        this.appendChatLog('sys', '사용법: /w 닉네임 메시지');
-        return;
-      }
-      const target = rest.slice(0, sp);
-      const message = rest.slice(sp + 1);
-      this.network.send({ type: 'CHAT', scope: 'WHISPER', target, message });
-    } else {
-      this.network.send({ type: 'CHAT', scope: 'ALL', target: '', message: text });
-    }
+    this.effects.spawnLevelUp(x, y, level);
   }
 
   private onChat(p: Packet): void {
-    const scope = p.scope as string;
-    const sender = p.sender as string;
-    const msg = p.message as string;
-    if (scope.startsWith('WHISPER:')) {
-      const partner = scope.slice('WHISPER:'.length);
-      this.appendChatLog('whisper', `[귓] ${sender} → ${partner}: ${msg}`);
-    } else {
-      this.appendChatLog('all', `${sender}: ${msg}`);
-    }
+    this.chat.onReceive(p.scope as string, p.sender as string, p.message as string);
   }
-
-  private appendChatLog(kind: 'sys' | 'all' | 'whisper', line: string): void {
-    const log = document.getElementById('chat-log');
-    if (!log) return;
-    const div = document.createElement('div');
-    div.className = kind;
-    div.textContent = line;
-    log.appendChild(div);
-    // 최근 80줄만 유지
-    while (log.children.length > 80) log.removeChild(log.firstChild!);
-    log.scrollTop = log.scrollHeight;
-    // 축소 상태였으면 ghost 로 잠시 드러낸다.
-    this.showChatGhost();
-  }
-
-  private spawnAttackEffect(): void {
-    const offsetX = this.facing === 'right' ? 28 : -28;
-    const slash = this.add
-      .rectangle(this.player.x + offsetX, this.player.y, 40, 20, 0xffffff, 0.7)
-      .setStrokeStyle(2, 0xffeb8a);
-    this.tweens.add({
-      targets: slash,
-      alpha: 0,
-      scaleX: 1.3,
-      duration: 160,
-      onComplete: () => slash.destroy()
-    });
-  }
-
 }

@@ -58,4 +58,12 @@ public final class ItemRegistry {
         ItemTemplate t = TEMPLATES.get(id);
         return t != null && t.type() == ItemType.EQUIPMENT;
     }
+
+    /** 장비로 등록된 모든 아이템 ID. 클라 HUD 에 SSoT 로 전달. */
+    public static java.util.List<String> equipmentIds() {
+        return TEMPLATES.values().stream()
+                .filter(t -> t.type() == ItemType.EQUIPMENT)
+                .map(ItemTemplate::id)
+                .toList();
+    }
 }
