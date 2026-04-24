@@ -181,17 +181,17 @@ export class HudView {
       this.positionTooltip(tooltip, event);
     };
 
+    // mouseover 가 매 슬롯 경계에서 발생하므로, 현재 커서 아래가 채워진 슬롯이 아니면
+    // 툴팁을 즉시 숨긴다. 빈 슬롯·그리드 여백에서 잔존하던 툴팁이 제거된다.
     grid.addEventListener('mouseover', (e) => {
       const slot = (e.target as HTMLElement).closest('.inv-slot.filled') as HTMLElement | null;
       if (slot) show(slot, e as MouseEvent);
+      else tooltip.classList.add('hidden');
     });
     grid.addEventListener('mousemove', (e) => {
       if (!tooltip.classList.contains('hidden')) this.positionTooltip(tooltip, e as MouseEvent);
     });
-    grid.addEventListener('mouseout', (e) => {
-      const related = (e as MouseEvent).relatedTarget as HTMLElement | null;
-      if (!related || !grid.contains(related)) tooltip.classList.add('hidden');
-    });
+    grid.addEventListener('mouseleave', () => tooltip.classList.add('hidden'));
   }
 
   /** 툴팁을 커서 근처에 배치하되 화면 밖으로 나가지 않게 clamp. */
