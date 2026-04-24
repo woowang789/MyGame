@@ -46,3 +46,6 @@ yarn-error.log*
 *.db
 *.mv.db
 *.trace.db
+
+# Claude Code 워크트리: 메인 리포에 embedded git repo 로 잡히지 않도록 차단.
+.claude/worktrees/
