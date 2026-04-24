@@ -131,6 +131,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setPlayerName(this.playerName);
     this.setupChatInput();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
+    this.hud.bindInventoryInteractions();
 
     this.mapController = new MapController(this, this.player);
     this.mapController.loadMap(this.currentMapId);

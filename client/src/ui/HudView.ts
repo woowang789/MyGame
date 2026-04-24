@@ -1,9 +1,16 @@
-import { ITEM_COLORS, ITEM_NAMES } from '../entities/DroppedItemSprite';
+import { ITEM_NAMES } from '../entities/DroppedItemSprite';
+import { formatBonus, getItemMeta, ItemType } from '../data/ItemMeta';
 
 /* ITEM_NAMES 가 HudView 내부에서 equipment 슬롯 렌더에만 쓰이므로 유지. */
 
-/** 인벤토리 창의 기본 슬롯 수. 현재는 그리드 전면을 채우는 최소 용량. */
+/** 인벤토리 창의 탭별 기본 슬롯 수. 아이템이 더 많으면 스크롤에 맡긴다. */
 const INVENTORY_MIN_SLOTS = 24;
+
+const TAB_LABEL: Record<ItemType, string> = {
+  EQUIPMENT: '장비',
+  CONSUMABLE: '소비',
+  ETC: '기타'
+};
 
 /**
  * HUD DOM 조작 전담.
@@ -37,6 +44,10 @@ export const EQUIPMENT_IDS: ReadonlySet<string> = new Set([
 
 export class HudView {
   private readonly respawnOverlayDurationMs = 3000;
+  /** 현 인벤토리 탭. updateInventory 가 이 값으로 필터링해 렌더한다. */
+  private inventoryTab: ItemType = 'EQUIPMENT';
+  /** 마지막 인벤토리 스냅샷. 탭 전환 시 서버 패킷 없이 재렌더하기 위해 보관. */
+  private lastInventory: Record<string, number> = {};
 
   updateStats(stats: {
     attack: number;
@@ -76,13 +87,35 @@ export class HudView {
   }
 
   /**
-   * 인벤토리 스냅샷을 그리드로 렌더. 기본 슬롯 수보다 아이템 수가 많으면
-   * 필요한 만큼 슬롯을 늘리고 스크롤에 맡긴다.
+   * 인벤토리 스냅샷을 그리드로 렌더. 현재 선택된 탭에 해당하는 아이템만 표시한다.
+   * 서버는 타입 구분 없이 전체 맵을 주므로 클라(ItemMeta) 의 type 으로 필터링.
    */
   updateInventory(items: Record<string, number>): void {
+    this.lastInventory = items;
+    this.renderInventoryGrid();
+  }
+
+  /** 탭 변경. 서버 요청 없이 기존 스냅샷으로 재렌더. */
+  setInventoryTab(tab: ItemType): void {
+    if (this.inventoryTab === tab) return;
+    this.inventoryTab = tab;
+    // 탭 UI 상태 동기화.
+    document.querySelectorAll('#inv-tabs .tab').forEach((el) => {
+      const t = (el as HTMLElement).dataset.tab as ItemType | undefined;
+      el.classList.toggle('active', t === tab);
+    });
+    this.renderInventoryGrid();
+  }
+
+  private renderInventoryGrid(): void {
     const grid = document.getElementById('inv-grid');
     if (!grid) return;
-    const entries = Object.entries(items).filter(([, n]) => n > 0);
+
+    // 현 탭의 아이템만 추려낸다. (meso 는 ETC 이지만 인벤토리 snapshot 에 포함되지 않음)
+    const entries = Object.entries(this.lastInventory)
+      .filter(([, n]) => n > 0)
+      .filter(([id]) => getItemMeta(id).type === this.inventoryTab);
+
     const slotCount = Math.max(INVENTORY_MIN_SLOTS, entries.length);
 
     const frag = document.createDocumentFragment();
@@ -92,16 +125,12 @@ export class HudView {
       const entry = entries[i];
       if (entry) {
         const [id, qty] = entry;
+        const meta = getItemMeta(id);
         slot.classList.add('filled');
-        slot.title = `${ITEM_NAMES[id] ?? id} × ${qty}`;
+        slot.dataset.itemId = id;
         const icon = document.createElement('div');
         icon.className = 'inv-icon';
-        const color = ITEM_COLORS[id];
-        if (color !== undefined) {
-          icon.style.background = `#${color.toString(16).padStart(6, '0')}`;
-        } else {
-          icon.style.background = '#666';
-        }
+        icon.style.background = `#${meta.color.toString(16).padStart(6, '0')}`;
         slot.appendChild(icon);
         if (qty > 1) {
           const q = document.createElement('span');
@@ -113,6 +142,68 @@ export class HudView {
       frag.appendChild(slot);
     }
     grid.replaceChildren(frag);
+  }
+
+  /**
+   * 인벤토리 창의 탭 클릭 핸들러와 슬롯 툴팁을 최초 1회 바인딩한다.
+   * GameScene.create 에서 호출. 탭 요소는 고정이고 슬롯은 동적으로 재렌더되므로
+   * 툴팁은 그리드 컨테이너에 이벤트 위임(delegation) 방식으로 연결.
+   */
+  bindInventoryInteractions(): void {
+    // 탭 클릭
+    document.querySelectorAll('#inv-tabs .tab').forEach((el) => {
+      el.addEventListener('click', () => {
+        const t = (el as HTMLElement).dataset.tab as ItemType | undefined;
+        if (t) this.setInventoryTab(t);
+      });
+    });
+
+    // 슬롯 hover 툴팁 (이벤트 위임)
+    const grid = document.getElementById('inv-grid');
+    const tooltip = document.getElementById('item-tooltip');
+    if (!grid || !tooltip) return;
+
+    const show = (target: HTMLElement, event: MouseEvent) => {
+      const id = target.dataset.itemId;
+      if (!id) return;
+      const meta = getItemMeta(id);
+      (tooltip.querySelector('.tt-name') as HTMLElement).textContent = meta.name;
+      (tooltip.querySelector('.tt-type') as HTMLElement).textContent = TAB_LABEL[meta.type];
+      const bonusEl = tooltip.querySelector('.tt-bonus') as HTMLElement;
+      if (meta.bonus) {
+        bonusEl.textContent = formatBonus(meta.bonus);
+        bonusEl.style.display = '';
+      } else {
+        bonusEl.style.display = 'none';
+      }
+      (tooltip.querySelector('.tt-desc') as HTMLElement).textContent = meta.description;
+      tooltip.classList.remove('hidden');
+      this.positionTooltip(tooltip, event);
+    };
+
+    grid.addEventListener('mouseover', (e) => {
+      const slot = (e.target as HTMLElement).closest('.inv-slot.filled') as HTMLElement | null;
+      if (slot) show(slot, e as MouseEvent);
+    });
+    grid.addEventListener('mousemove', (e) => {
+      if (!tooltip.classList.contains('hidden')) this.positionTooltip(tooltip, e as MouseEvent);
+    });
+    grid.addEventListener('mouseout', (e) => {
+      const related = (e as MouseEvent).relatedTarget as HTMLElement | null;
+      if (!related || !grid.contains(related)) tooltip.classList.add('hidden');
+    });
+  }
+
+  /** 툴팁을 커서 근처에 배치하되 화면 밖으로 나가지 않게 clamp. */
+  private positionTooltip(tooltip: HTMLElement, event: MouseEvent): void {
+    const margin = 14;
+    const rect = tooltip.getBoundingClientRect();
+    let x = event.clientX + margin;
+    let y = event.clientY + margin;
+    if (x + rect.width > window.innerWidth)  x = event.clientX - rect.width - margin;
+    if (y + rect.height > window.innerHeight) y = event.clientY - rect.height - margin;
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top  = `${y}px`;
   }
 
   /** 인벤토리 창 열기/닫기/토글. 채팅 입력 중 I 를 눌러도 창이 뜨는 일을 피하려 외부에서 호출. */
@@ -128,6 +219,7 @@ export class HudView {
   }
   private setInventoryHidden(hidden: boolean): void {
     document.getElementById('inventory-window')?.classList.toggle('hidden', hidden);
+    if (hidden) document.getElementById('item-tooltip')?.classList.add('hidden');
   }
 
   updateEquipment(slots: Record<string, string>): void {
