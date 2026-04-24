@@ -27,6 +27,8 @@ public final class Monster {
     /** 넉백 종료 시각(ms, System.currentTimeMillis). 이 값 이전이면 state 대신 넉백 속도로 이동. */
     private long knockbackUntilMs = 0;
     private double knockbackVx = 0;
+    /** 넉백 종료 직후 전이할 상태. null 이면 Idle 로 복귀. 어그로(추격) 삽입 지점. */
+    private MonsterState postKnockbackState = null;
 
     public Monster(int id, String template,
                    double spawnX, double groundY,
@@ -85,6 +87,11 @@ public final class Monster {
         this.vx = vx;
     }
 
+    /** 넉백이 끝나는 순간 적용할 다음 상태를 지정한다. 보통 추격(ChaseState)을 꽂는다. */
+    public void setPostKnockbackState(MonsterState next) {
+        this.postKnockbackState = next;
+    }
+
     public boolean isKnockedBack(long now) { return now < knockbackUntilMs; }
 
     public void update(long dtMs) {
@@ -101,8 +108,10 @@ public final class Monster {
         if (knockbackUntilMs != 0 && now >= knockbackUntilMs) {
             knockbackUntilMs = 0;
             knockbackVx = 0;
-            // Idle 로 돌려두면 다음 tick 에서 자연스럽게 새 Wander 를 시작한다.
-            transitionTo(new mygame.game.ai.IdleState());
+            MonsterState next = postKnockbackState;
+            postKnockbackState = null;
+            // 추격이 꽂혀 있으면 플레이어를 향해, 아니면 기본 Idle → Wander 사이클.
+            transitionTo(next != null ? next : new mygame.game.ai.IdleState());
         }
         if (state != null) {
             state.update(this, dtMs);
