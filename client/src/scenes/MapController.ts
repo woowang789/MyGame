@@ -19,6 +19,12 @@ export interface PortalDef {
 export class MapController {
   private tilemap: Phaser.Tilemaps.Tilemap | null = null;
   private portals: PortalDef[] = [];
+  /**
+   * 현재 맵의 지면 collider. 다음 loadMap 호출 시 반드시 destroy 해야 한다.
+   * 이전 collider 가 파괴된 ground layer 를 참조한 채 남아있으면 물리 스텝에서
+   * 크래시가 나 Phaser 씬 전체가 멈춘다.
+   */
+  private groundCollider: Phaser.Physics.Arcade.Collider | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -26,6 +32,8 @@ export class MapController {
   ) {}
 
   loadMap(mapId: string): void {
+    this.groundCollider?.destroy();
+    this.groundCollider = null;
     this.tilemap?.destroy();
     for (const p of this.portals) {
       p.zone.destroy();
@@ -44,7 +52,7 @@ export class MapController {
 
     this.scene.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.scene.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-    this.scene.physics.add.collider(this.player, ground);
+    this.groundCollider = this.scene.physics.add.collider(this.player, ground);
 
     const portalLayer = map.getObjectLayer('Portals');
     if (portalLayer) {
