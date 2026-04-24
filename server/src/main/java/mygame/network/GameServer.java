@@ -6,37 +6,27 @@ import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import mygame.game.CombatListener;
+import mygame.game.CombatService;
 import mygame.game.GameLoop;
 import mygame.game.GameMap;
 import mygame.game.ProgressionSystem;
 import mygame.game.World;
-import mygame.network.packets.Packets.PlayerDamagedPacket;
-import mygame.network.packets.Packets.PlayerDiedPacket;
-import mygame.network.packets.Packets.PlayerRespawnedPacket;
+import mygame.game.skill.AttackBox;
 import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
 import mygame.game.event.EventBus;
 import mygame.game.event.GameEvent;
 import mygame.game.event.GameEvent.ExpGained;
 import mygame.game.event.GameEvent.LeveledUp;
-import mygame.game.event.GameEvent.MonsterKilled;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
 import mygame.auth.AuthService;
-import mygame.auth.AuthService.AuthFailure;
-import mygame.auth.AuthService.AuthResult;
-import mygame.auth.AuthService.AuthSuccess;
 import mygame.db.AccountRepository;
 import mygame.db.Database;
 import mygame.db.JdbcAccountRepository;
 import mygame.db.JdbcPlayerRepository;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
-import mygame.network.packets.Packets.AuthResponse;
-import mygame.network.packets.Packets.LoginRequest;
-import mygame.network.packets.Packets.RegisterRequest;
-import mygame.game.SpawnPoint;
 import mygame.game.item.DroppedItem;
 import mygame.network.packets.Packets.AttackRequest;
 import mygame.network.packets.Packets.ChatMessage;
@@ -58,7 +48,6 @@ import mygame.network.packets.Packets.SkillUsedPacket;
 import mygame.network.packets.Packets.UseSkillRequest;
 import mygame.network.packets.Packets.MapChangedPacket;
 import mygame.network.packets.Packets.MonsterDamagedPacket;
-import mygame.network.packets.Packets.MonsterDiedPacket;
 import mygame.network.packets.Packets.MonsterState;
 import mygame.network.packets.Packets.MoveRequest;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
@@ -93,20 +82,14 @@ public final class GameServer extends WebSocketServer {
     private final EventBus eventBus = new EventBus();
     @SuppressWarnings("unused") // 생성 시 EventBus 에 자기 자신을 등록하므로 참조 유지만 하면 충분
     private final ProgressionSystem progression = new ProgressionSystem(eventBus);
+    private final CombatService combatService = new CombatService(world, eventBus);
     private final Database database;
     private final PlayerRepository playerRepo;
     private final AccountRepository accountRepo;
-    private final AuthService authService;
+    private final AuthSessions auth;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
-    /**
-     * Phase L: 로그인 성공한 소켓 → accountId 매핑. JOIN 패킷은 이 맵에 있는 소켓만 허용.
-     * 로그아웃/연결 종료 시 제거.
-     */
-    private final Map<WebSocket, Long> authenticatedAccounts = new ConcurrentHashMap<>();
-    /** 같은 계정의 중복 접속을 막기 위한 역인덱스. 값은 현재 접속 중인 소켓. */
-    private final Map<Long, WebSocket> accountSessions = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
 
     public GameServer(int port) {
@@ -120,64 +103,15 @@ public final class GameServer extends WebSocketServer {
         this.database.runMigrations();
         this.playerRepo = new JdbcPlayerRepository(database);
         this.accountRepo = new JdbcAccountRepository(database);
-        this.authService = new AuthService(accountRepo);
+        this.auth = new AuthSessions(new AuthService(accountRepo), json);
+        world.setCombatListener(new PlayerCombatHandler(world, this::sendStats));
         registerHandlers();
-        // 전투 이벤트를 네트워크로 변환. World → 각 GameMap.
-        world.setCombatListener(new CombatListener() {
-            @Override
-            public void onPlayerDamaged(Player target, Monster attacker, int dmgApplied) {
-                GameMap m = world.map(target.mapId());
-                if (m == null) return;
-                int maxHp = target.effectiveStats().maxHp();
-                // 공격자 id 는 "몬스터 구분용 음수" 로 인코딩해 플레이어 id 와 섞이지 않게 한다.
-                m.broadcast("PLAYER_DAMAGED",
-                        new PlayerDamagedPacket(target.id(), dmgApplied, target.hp(), maxHp, -attacker.id()));
-                // 본인에게 최신 스탯(HP/MP) 동기화.
-                sendStats(target);
-            }
-
-            @Override
-            public void onPlayerDied(Player target, Monster killer) {
-                GameMap m = world.map(target.mapId());
-                if (m != null) m.broadcast("PLAYER_DIED", new PlayerDiedPacket(target.id()));
-                // 3초 후 부활. 게임 루프가 아닌 별도 스케줄러로 간단 처리.
-                scheduleRespawn(target);
-            }
-        });
-    }
-
-    private static final long RESPAWN_DELAY_MS = 3000;
-    private final java.util.concurrent.ScheduledExecutorService respawnExec =
-            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "respawn");
-                t.setDaemon(true);
-                return t;
-            });
-
-    private void scheduleRespawn(Player target) {
-        respawnExec.schedule(() -> {
-            try {
-                if (!target.connection().isOpen()) return;
-                GameMap current = world.map(target.mapId());
-                if (current == null) return;
-                // 현재 맵의 스폰 지점으로 텔레포트 + HP/MP 풀.
-                target.moveTo(current.id(), current.spawnX(), current.spawnY());
-                target.fullHealHp();
-                target.fullHealMp();
-                current.broadcast("PLAYER_RESPAWN",
-                        new PlayerRespawnedPacket(target.id(), current.id(),
-                                target.x(), target.y(), target.hp()));
-                sendStats(target);
-            } catch (Exception e) {
-                log.error("리스폰 처리 실패 playerId={}", target.id(), e);
-            }
-        }, RESPAWN_DELAY_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private void registerHandlers() {
         // Phase L — 인증은 JOIN 이전에 선행. REGISTER 는 성공해도 자동 로그인은 하지 않는다.
-        dispatcher.register("LOGIN", this::handleLogin);
-        dispatcher.register("REGISTER", this::handleRegister);
+        dispatcher.register("LOGIN", auth::handleLogin);
+        dispatcher.register("REGISTER", auth::handleRegister);
         dispatcher.register("JOIN", this::handleJoin);
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
@@ -222,10 +156,7 @@ public final class GameServer extends WebSocketServer {
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        // Phase L: 인증 정보 항상 해제(JOIN 전 종료 포함)
-        Long acctId = authenticatedAccounts.remove(conn);
-        if (acctId != null) accountSessions.remove(acctId, conn);
-
+        auth.clear(conn); // 인증 정보 항상 해제(JOIN 전 종료 포함)
         Player player = sessionPlayers.remove(conn);
         if (player == null) {
             log.info("JOIN 전에 연결 종료: remote={}", conn.getRemoteSocketAddress());
@@ -287,47 +218,9 @@ public final class GameServer extends WebSocketServer {
 
     // --- 핸들러 ---
 
-    private void handleRegister(PacketContext ctx) throws Exception {
-        RegisterRequest req = ctx.json().treeToValue(ctx.body(), RegisterRequest.class);
-        AuthResult result = authService.register(req.username(), req.password());
-        if (result instanceof AuthFailure f) {
-            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
-                    new AuthResponse(false, f.message(), 0, "")));
-            return;
-        }
-        // 등록 성공은 단순히 성공 메시지만 전달. 클라이언트가 뒤이어 LOGIN 을 보낸다.
-        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
-                new AuthResponse(true, "", 0, req.username())));
-    }
-
-    private void handleLogin(PacketContext ctx) throws Exception {
-        LoginRequest req = ctx.json().treeToValue(ctx.body(), LoginRequest.class);
-        if (authenticatedAccounts.containsKey(ctx.conn())) {
-            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
-                    new AuthResponse(false, "이미 로그인 상태입니다.", 0, "")));
-            return;
-        }
-        AuthResult result = authService.login(req.username(), req.password());
-        if (result instanceof AuthFailure f) {
-            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
-                    new AuthResponse(false, f.message(), 0, "")));
-            return;
-        }
-        long accountId = ((AuthSuccess) result).account().id();
-        // 계정 1개 = 세션 1개 보장. 기존 소켓이 있으면 끊는다.
-        WebSocket prev = accountSessions.put(accountId, ctx.conn());
-        if (prev != null && prev != ctx.conn() && prev.isOpen()) {
-            prev.send(PacketEnvelope.error(ctx.json(), "다른 위치에서 로그인되어 연결이 종료됩니다."));
-            prev.close();
-        }
-        authenticatedAccounts.put(ctx.conn(), accountId);
-        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
-                new AuthResponse(true, "", accountId, req.username())));
-    }
-
     private void handleJoin(PacketContext ctx) throws Exception {
         // Phase L: 인증 선행 필수
-        Long accountId = authenticatedAccounts.get(ctx.conn());
+        Long accountId = auth.accountIdOf(ctx.conn());
         if (accountId == null) {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "로그인이 필요합니다."));
             return;
@@ -471,41 +364,18 @@ public final class GameServer extends WebSocketServer {
         // 이펙트용 브로드캐스트 먼저(근접/원거리 모든 스킬 공통).
         map.broadcast("SKILL_USED", new SkillUsedPacket(player.id(), skill.id(), dir));
 
-        // 몬스터 피해 결과를 기존 MONSTER_DAMAGED 패킷으로 재활용.
+        // 몬스터 피해/사망 결과 송출. 스킬 구현체가 이미 Monster.applyDamage 를 호출했으므로
+        // 여기서는 CombatService.finishKill 로 드롭/EXP/브로드캐스트만 마무리한다.
         for (var hit : skillCtx.outcome().hits()) {
             map.broadcast("MONSTER_DAMAGED",
                     new MonsterDamagedPacket(hit.monsterId(), hit.damage(), hit.remainingHp(), player.id()));
-            if (hit.killed()) {
-                Monster m = findMonsterById(map, hit.monsterId());
-                if (m == null) continue;
-                SpawnPoint origin = map.findSpawnFor(m);
-                map.killMonster(m, origin);
-                map.broadcast("MONSTER_DIED", new MonsterDiedPacket(m.id()));
-                int expReward = origin != null ? origin.expReward() : 0;
-                eventBus.publish(new MonsterKilled(player, m, expReward));
-                if (origin != null && origin.dropTable() != null) {
-                    int scatter = 0;
-                    for (String itemId : origin.dropTable().roll()) {
-                        double dropX = m.x() + (scatter - 1) * 16;
-                        scatter++;
-                        DroppedItem d = new DroppedItem(
-                                world.itemIdSeq().getAndIncrement(),
-                                itemId, dropX, m.y(), DROP_TTL_MS);
-                        map.addDroppedItem(d);
-                    }
-                }
-            }
+            if (!hit.killed()) continue;
+            Monster target = map.monster(hit.monsterId());
+            if (target != null) combatService.finishKill(map, player, target);
         }
 
         // MP / 쿨다운 상태 동기화. 스탯 패킷이 현재 mp 를 포함하므로 한 번 보내면 된다.
         sendStats(player);
-    }
-
-    private static Monster findMonsterById(GameMap map, int monsterId) {
-        for (Monster m : map.monsters()) {
-            if (m.id() == monsterId) return m;
-        }
-        return null;
     }
 
     /** 본인에게 장비 스냅샷과 최종 스탯을 함께 전달. 공격 피해량 등 UI 에 영향. */
@@ -650,11 +520,6 @@ public final class GameServer extends WebSocketServer {
 
     // --- 공격 ---
 
-    private static final double ATTACK_RANGE_X = 70;
-    // 플레이어 중심 기준으로 상/하 모두 검사하여 서 있는 몬스터도 충분히 포함.
-    private static final double ATTACK_RANGE_Y_UP = 60;
-    private static final double ATTACK_RANGE_Y_DOWN = 60;
-
     private void handleAttack(PacketContext ctx) throws Exception {
         Player player = ctx.player();
         if (player == null) {
@@ -667,43 +532,10 @@ public final class GameServer extends WebSocketServer {
         if (map == null) return;
 
         String dir = (req.dir() == null || req.dir().isBlank()) ? player.facing() : req.dir();
-        double px = player.x();
-        double py = player.y();
-        double hitMinX = dir.equals("left") ? px - ATTACK_RANGE_X : px;
-        double hitMaxX = dir.equals("left") ? px : px + ATTACK_RANGE_X;
-        double hitMinY = py - ATTACK_RANGE_Y_UP;
-        double hitMaxY = py + ATTACK_RANGE_Y_DOWN;
-
-        for (Monster m : map.monsters()) {
-            if (m.isDead()) continue;
-            if (m.x() < hitMinX || m.x() > hitMaxX) continue;
-            if (m.y() < hitMinY || m.y() > hitMaxY) continue;
-
-            // Phase I: 데미지 = 최종 스탯의 attack. Decorator 체인이 레벨 + 장비 보너스를 합산.
-            int attack = player.effectiveStats().attack();
-            int dmg = m.applyDamage(attack);
-            map.broadcast("MONSTER_DAMAGED",
-                    new MonsterDamagedPacket(m.id(), dmg, m.hp(), player.id()));
-            if (m.isDead()) {
-                SpawnPoint origin = map.findSpawnFor(m);
-                map.killMonster(m, origin);
-                map.broadcast("MONSTER_DIED", new MonsterDiedPacket(m.id()));
-                int expReward = origin != null ? origin.expReward() : 0;
-                eventBus.publish(new MonsterKilled(player, m, expReward));
-
-                // 드롭 롤: 각 아이템은 독립 시행. 몬스터 위치 근처에 흩뿌림.
-                if (origin != null && origin.dropTable() != null) {
-                    int scatter = 0;
-                    for (String itemId : origin.dropTable().roll()) {
-                        double dropX = m.x() + (scatter - 1) * 16;
-                        scatter++;
-                        DroppedItem d = new DroppedItem(
-                                world.itemIdSeq().getAndIncrement(),
-                                itemId, dropX, m.y(), DROP_TTL_MS);
-                        map.addDroppedItem(d);
-                    }
-                }
-            }
+        // 데미지 = 최종 스탯의 attack (Decorator 체인: 레벨 + 장비 합산).
+        int damage = player.effectiveStats().attack();
+        for (Monster m : AttackBox.monstersInFront(player, map, dir, 1.0)) {
+            combatService.damageMonster(map, player, m, damage);
         }
     }
 }

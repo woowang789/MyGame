@@ -4,6 +4,7 @@ import { DroppedItemSprite, ITEM_NAMES } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
+import { EQUIPMENT_IDS, HudView, SKILL_META } from '../ui/HudView';
 
 const TILESET_NAME = 'tiles';
 const TILESET_TEXTURE = 'tiles-tex';
@@ -77,12 +78,7 @@ export class GameScene extends Phaser.Scene {
   private equippedSlots: Record<string, string> = {};
   /** 스킬별 남은 쿨다운 종료 시각(ms, performance.now 기준). HUD 카운트다운 표시용. */
   private readonly skillCooldownUntil = new Map<string, number>();
-  /** 스킬 메타 (클라에서도 쿨다운 길이를 알아야 예측 표시 가능). 서버와 동일 값. */
-  private readonly SKILL_META: Record<string, { name: string; cooldownMs: number; mpCost: number }> = {
-    power_strike: { name: '파워 스트라이크', cooldownMs: 1500, mpCost: 8 },
-    triple_blow: { name: '트리플 블로우', cooldownMs: 4000, mpCost: 18 },
-    recovery: { name: '리커버리', cooldownMs: 10000, mpCost: 0 }
-  };
+  private readonly hud = new HudView();
 
   private currentMapId = 'henesys';
   private tilemap: Phaser.Tilemaps.Tilemap | null = null;
@@ -358,34 +354,17 @@ export class GameScene extends Phaser.Scene {
   private onEquipment(p: Packet): void {
     const slots = (p.slots ?? {}) as Record<string, string>;
     this.equippedSlots = slots;
-    const setSlot = (id: string, slot: string) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const itemId = slots[slot];
-      el.textContent = itemId ? (ITEM_NAMES[itemId] ?? itemId) : '-';
-      el.style.color = itemId ? '#ffeb8a' : '#666';
-    };
-    setSlot('eq-weapon', 'WEAPON');
-    setSlot('eq-hat', 'HAT');
-    setSlot('eq-armor', 'ARMOR');
+    this.hud.updateEquipment(slots);
   }
 
   private onStats(p: Packet): void {
-    const attack = p.attack as number;
-    const maxHp = p.maxHp as number;
-    const maxMp = p.maxMp as number;
-    const currentHp = p.currentHp as number;
-    const currentMp = p.currentMp as number;
-    const statsEl = document.getElementById('eq-stats');
-    if (statsEl) statsEl.textContent = `ATK ${attack} · MAXHP ${maxHp}`;
-    const hpText = document.getElementById('hp-text');
-    if (hpText) hpText.textContent = `${currentHp} / ${maxHp}`;
-    const hpFill = document.getElementById('hp-bar-fill');
-    if (hpFill) hpFill.style.width = `${maxHp > 0 ? (100 * currentHp) / maxHp : 0}%`;
-    const mpText = document.getElementById('mp-text');
-    if (mpText) mpText.textContent = `${currentMp} / ${maxMp}`;
-    const mpFill = document.getElementById('mp-bar-fill');
-    if (mpFill) mpFill.style.width = `${maxMp > 0 ? (100 * currentMp) / maxMp : 0}%`;
+    this.hud.updateStats({
+      attack: p.attack as number,
+      maxHp: p.maxHp as number,
+      maxMp: p.maxMp as number,
+      currentHp: p.currentHp as number,
+      currentMp: p.currentMp as number
+    });
   }
 
   private onPlayerDamaged(p: Packet): void {
@@ -403,18 +382,14 @@ export class GameScene extends Phaser.Scene {
     this.spawnDamageNumber(x, y - 28, dmg);
     if (playerId === this.myId) {
       this.flashPlayerDamage();
-      // 본인 HP 바를 즉시 반영(STATS 패킷 지연 대비).
-      const hpText = document.getElementById('hp-text');
-      if (hpText) hpText.textContent = `${currentHp} / ${maxHp}`;
-      const hpFill = document.getElementById('hp-bar-fill');
-      if (hpFill) hpFill.style.width = `${maxHp > 0 ? (100 * currentHp) / maxHp : 0}%`;
+      this.hud.updateHpImmediate(currentHp, maxHp);
     }
   }
 
   private onPlayerDied(p: Packet): void {
     const playerId = p.playerId as number;
     if (playerId === this.myId) {
-      this.showDeathOverlay();
+      this.hud.showDeathOverlay();
       this.player.setTint(0x555555);
       this.player.setAlpha(0.5);
     } else {
@@ -431,7 +406,7 @@ export class GameScene extends Phaser.Scene {
     const x = p.x as number;
     const y = p.y as number;
     if (playerId === this.myId) {
-      this.hideDeathOverlay();
+      this.hud.hideDeathOverlay();
       this.player.clearTint();
       this.player.setAlpha(1);
       this.player.setVelocity(0, 0);
@@ -474,26 +449,6 @@ export class GameScene extends Phaser.Scene {
       duration: 700,
       onComplete: () => txt.destroy()
     });
-  }
-
-  private showDeathOverlay(): void {
-    const overlay = document.getElementById('death-overlay');
-    const cd = document.getElementById('respawn-countdown');
-    if (!overlay || !cd) return;
-    overlay.classList.add('active');
-    const startAt = performance.now();
-    const totalMs = 3000;
-    const tick = () => {
-      if (!overlay.classList.contains('active')) return;
-      const remaining = Math.max(0, totalMs - (performance.now() - startAt));
-      cd.textContent = (remaining / 1000).toFixed(1);
-      if (remaining > 0) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }
-
-  private hideDeathOverlay(): void {
-    document.getElementById('death-overlay')?.classList.remove('active');
   }
 
   private onSkillUsed(p: Packet): void {
@@ -541,28 +496,8 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private refreshSkillCooldowns(now: number): void {
-    for (const skillId of Object.keys(this.SKILL_META)) {
-      const el = document.getElementById(`cd-${skillId}`);
-      const row = el?.parentElement;
-      if (!el) continue;
-      const until = this.skillCooldownUntil.get(skillId) ?? 0;
-      const remaining = Math.max(0, until - now);
-      if (remaining === 0) {
-        el.textContent = '';
-        row?.classList.remove('cooling');
-      } else {
-        el.textContent = `${(remaining / 1000).toFixed(1)}s`;
-        row?.classList.add('cooling');
-      }
-    }
-  }
-
   /** 인벤토리에서 장비로 보이는 첫 아이템 ID 반환(없으면 null). */
   private firstEquipmentInInventory(): string | null {
-    // ITEM_NAMES 에 등록된 이름 중 "검/모자/갑옷" 을 포함하는 것을 장비로 본다.
-    // (클라는 서버의 EQUIPMENT 판정을 직접 모르므로 명시된 알려진 ID 목록을 사용.)
-    const EQUIPMENT_IDS = new Set(['wooden_sword', 'iron_sword', 'leather_cap', 'cloth_armor']);
     for (const id of Object.keys(this.inventoryItems)) {
       if (EQUIPMENT_IDS.has(id) && (this.inventoryItems[id] ?? 0) > 0) return id;
     }
@@ -606,13 +541,13 @@ export class GameScene extends Phaser.Scene {
       if (!Phaser.Input.Keyboard.JustDown(key) || !this.network.isOpen) continue;
       const until = this.skillCooldownUntil.get(skillId) ?? 0;
       if (time < until) continue;
-      const meta = this.SKILL_META[skillId];
+      const meta = SKILL_META[skillId];
       this.skillCooldownUntil.set(skillId, time + meta.cooldownMs);
       this.network.send({ type: 'USE_SKILL', skillId, dir: this.facing });
     }
 
     // 스킬 쿨다운 HUD 갱신(60Hz 갱신 부담 적음, 문자열 변환만).
-    this.refreshSkillCooldowns(time);
+    this.hud.updateSkillCooldowns(time, this.skillCooldownUntil);
 
     // 점프
     if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && body.blocked.down) {
