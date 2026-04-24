@@ -7,6 +7,8 @@ import type { WebSocketClient, Packet } from '../network/WebSocketClient';
 import { ChatController } from '../ui/ChatController';
 import { EffectFactory } from '../ui/EffectFactory';
 import { applyMeta, EQUIPMENT_IDS, HudView, SKILL_META } from '../ui/HudView';
+import { getItemMeta } from '../data/ItemMeta';
+import { PickupLog } from '../ui/PickupLog';
 import { MapController } from './MapController';
 import {
   generatePlayerTexture,
@@ -82,6 +84,11 @@ export class GameScene extends Phaser.Scene {
   private readonly hud = new HudView();
   private readonly effects: EffectFactory;
   private readonly chat: ChatController;
+  private readonly pickupLog = new PickupLog();
+  /** 인벤 증가분 계산용 마지막 스냅샷. onInventory 가 새 값 수신 시 diff 해서 알림을 쏜다. */
+  private lastInventorySnapshot: Record<string, number> = {};
+  /** JOIN 직후 복원된 인벤토리 스냅샷을 "획득" 으로 오인하지 않기 위한 가드. */
+  private inventoryInitialized = false;
 
   private currentMapId = 'henesys';
   private mapController!: MapController;
@@ -334,8 +341,30 @@ export class GameScene extends Phaser.Scene {
 
   private onInventory(p: Packet): void {
     const items = p.items as Record<string, number>;
+    // 이전 스냅샷과 비교해 증가분만 픽업 로그로 알린다.
+    // 장비 착용·드롭 같은 "감소" 는 알리지 않고, 언장착/픽업 같은 "증가" 만 대상.
+    // 서버에 전용 ITEM_GAINED 패킷을 추가하지 않고 클라 측 diff 로 해결해
+    // 프로토콜 변경 없이 UX 를 개선한다.
+    if (this.inventoryInitialized) {
+      this.reportInventoryGains(this.lastInventorySnapshot, items);
+    }
+    this.lastInventorySnapshot = { ...items };
+    this.inventoryInitialized = true;
     this.inventoryItems = items;
     this.hud.updateInventory(items);
+  }
+
+  private reportInventoryGains(
+    prev: Record<string, number>,
+    next: Record<string, number>
+  ): void {
+    for (const [id, count] of Object.entries(next)) {
+      const delta = count - (prev[id] ?? 0);
+      if (delta <= 0) continue;
+      const name = getItemMeta(id).name;
+      const suffix = delta > 1 ? ` ×${delta}` : '';
+      this.pickupLog.push('item', `+ ${name}${suffix}`);
+    }
   }
 
   private onMeso(p: Packet): void {
@@ -343,8 +372,7 @@ export class GameScene extends Phaser.Scene {
     const gained = Number(p.gained ?? 0);
     this.hud.updateMeso(meso);
     if (gained > 0) {
-      // 획득 시 채팅 로그에 시스템 메시지로 남겨 피드백을 준다.
-      this.chat.append('sys', `+${gained.toLocaleString('ko-KR')} 메소 획득 (보유 ${meso.toLocaleString('ko-KR')})`);
+      this.pickupLog.push('meso', `+${gained.toLocaleString('ko-KR')} 메소`);
     }
   }
 
@@ -604,7 +632,10 @@ export class GameScene extends Phaser.Scene {
     const gained = p.gained as number;
     this.hud.updateExp(level, exp, toNext);
     if (gained > 0) {
+      // 플레이어 위의 플로팅 텍스트는 "타격 피드백" 역할로 유지하고,
+      // 좌하단 로그에도 동일 내용을 기록해 지나가는 알림을 놓치지 않게 한다.
       this.effects.spawnExpGain(this.player.x, this.player.y, gained);
+      this.pickupLog.push('exp', `+${gained.toLocaleString('ko-KR')} EXP`);
     }
   }
 
