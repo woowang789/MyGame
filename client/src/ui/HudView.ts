@@ -35,20 +35,29 @@ export interface SkillMeta {
   readonly mpCost: number;
 }
 
-/** 클라/서버가 공유하는 초보자 스킬 메타. 서버 SkillRegistry 와 값이 같아야 한다. */
-export const SKILL_META: Record<string, SkillMeta> = {
-  power_strike: { name: '파워 스트라이크', cooldownMs: 1500, mpCost: 8 },
-  triple_blow: { name: '트리플 블로우', cooldownMs: 4000, mpCost: 18 },
-  recovery: { name: '리커버리', cooldownMs: 10000, mpCost: 0 }
-};
+/**
+ * 서버 SkillRegistry 에서 내려오는 메타를 저장. META 패킷 수신 전까지는 빈 객체.
+ * 클라에서 직접 상수로 선언하지 않는 이유: 서버가 단일 진실 원천(SSoT)이 되어
+ * 한쪽만 수정해도 자동으로 동기화되도록 하기 위함.
+ */
+export const SKILL_META: Record<string, SkillMeta> = {};
 
-/** 인벤토리 아이템 ID 중 장비로 취급하는 것. 서버 ItemRegistry EQUIPMENT 와 동기 유지. */
-export const EQUIPMENT_IDS: ReadonlySet<string> = new Set([
-  'wooden_sword',
-  'iron_sword',
-  'leather_cap',
-  'cloth_armor'
-]);
+/** 서버 ItemRegistry EQUIPMENT 목록. META 패킷 수신 시 채워진다. */
+const equipmentIdSet = new Set<string>();
+export const EQUIPMENT_IDS: ReadonlySet<string> = equipmentIdSet;
+
+/** META 패킷으로 받은 장비 · 스킬 메타를 클라 런타임 상수로 반영. */
+export function applyMeta(meta: {
+  equipmentIds: readonly string[];
+  skills: readonly { id: string; name: string; mpCost: number; cooldownMs: number }[];
+}): void {
+  equipmentIdSet.clear();
+  for (const id of meta.equipmentIds) equipmentIdSet.add(id);
+  for (const key of Object.keys(SKILL_META)) delete SKILL_META[key];
+  for (const s of meta.skills) {
+    SKILL_META[s.id] = { name: s.name, cooldownMs: s.cooldownMs, mpCost: s.mpCost };
+  }
+}
 
 export class HudView {
   private readonly respawnOverlayDurationMs = 3000;

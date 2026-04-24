@@ -145,10 +145,14 @@ public final class Player {
 
     /** 쿨다운 체크 + 통과 시 현재 시각 기록. 한 번의 원자 연산으로 중복 사용 방지. */
     public boolean tryActivateSkill(String skillId, long cooldownMs, long now) {
-        Long last = skillLastUsedAt.get(skillId);
-        if (last != null && now - last < cooldownMs) return false;
-        skillLastUsedAt.put(skillId, now);
-        return true;
+        // compute 는 키에 대해 단일 원자 연산을 보장하므로 두 스레드가 동시에 통과하는 레이스를 차단한다.
+        boolean[] activated = {false};
+        skillLastUsedAt.compute(skillId, (k, last) -> {
+            if (last != null && now - last < cooldownMs) return last;
+            activated[0] = true;
+            return now;
+        });
+        return activated[0];
     }
 
     /** 남은 쿨다운 ms (0 이면 즉시 사용 가능). HUD 용. */
@@ -179,7 +183,7 @@ public final class Player {
         this.exp = exp;
     }
 
-    public int gainExp(int amount) {
+    public synchronized int gainExp(int amount) {
         if (amount <= 0) return 0;
         int levelUps = 0;
         exp += amount;
