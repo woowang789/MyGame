@@ -210,6 +210,11 @@ export class GameScene extends Phaser.Scene {
     this.mapController.loadMap(mapId);
     this.player.setVelocity(0, 0);
     this.player.setPosition(x, y);
+    // 새 맵 bounds 가 적용된 뒤 카메라를 플레이어 위치로 즉시 스냅.
+    // startFollow 의 lerp/deadzone 때문에 새 bounds 가장자리에 카메라가 고정돼
+    // 자기 캐릭터가 화면 밖에 머무는 문제를 방지한다.
+    this.cameras.main.centerOn(x, y);
+    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
     for (const o of others) this.spawnRemote(o);
     const ms = (p.monsters ?? []) as MonsterStateMsg[];
