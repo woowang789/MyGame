@@ -473,6 +473,15 @@ export class GameScene extends Phaser.Scene {
   override update(time: number, delta: number): void {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
 
+    // 채팅 입력 중에는 게임 입력을 전부 건너뛴다. 좌우 속도도 잠가 두어
+    // Q/E 등이 텍스트에 섞여들 때 캐릭터가 움직이지 않도록 한다.
+    if (this.isChatFocused()) {
+      this.player.setVelocityX(0);
+      for (const r of this.remotes.values()) r.update(delta);
+      for (const m of this.monsters.values()) m.update(delta);
+      return;
+    }
+
     // 넉백 구간에는 입력으로 속도를 덮어쓰지 않고 관성·중력에 맡긴다.
     // (onPlayerDamaged 가 performance.now() 기준으로 knockbackUntil 을 세팅.)
     const knockback = performance.now() < this.knockbackUntil;
@@ -679,9 +688,20 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // 입력창 포커스 중에는 방향키·Space 이벤트가 Phaser 로 가지 않게 차단.
+    // 입력창 포커스 중에는 Phaser 키 캡처를 끄고, 벗어나면 켠다.
+    // 추가로 blur 시 resetKeys() 를 호출해 입력창에서 눌렸던 Q/E 가 JustDown 으로
+    // 흘러들어가지 않도록 내부 키 상태를 초기화한다. (이 처리가 없으면 채팅 후
+    // Q/E 단축키가 "한 번 씹히는" 듯한 현상이 발생한다.)
     input.addEventListener('focus', () => this.input.keyboard?.disableGlobalCapture());
-    input.addEventListener('blur', () => this.input.keyboard?.enableGlobalCapture());
+    input.addEventListener('blur', () => {
+      this.input.keyboard?.enableGlobalCapture();
+      this.input.keyboard?.resetKeys();
+    });
+  }
+
+  /** 채팅 입력창이 포커스 상태인지. 게임 단축키(Q/E/숫자 등) 판정에서 제외하는 데 쓴다. */
+  private isChatFocused(): boolean {
+    return document.activeElement?.id === 'chat-input';
   }
 
   private sendChat(text: string): void {
