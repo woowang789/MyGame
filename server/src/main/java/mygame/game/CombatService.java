@@ -22,6 +22,8 @@ public final class CombatService {
     /** 몬스터 넉백 속도(px/s) 와 지속 시간(ms). 총 이동량 ≈ speed × duration/1000. */
     private static final double MONSTER_KNOCKBACK_SPEED = 320;
     private static final long MONSTER_KNOCKBACK_MS = 280;
+    /** 피격 후 추격(어그로) 지속시간. 이 시간이 지나면 일반 배회로 복귀. */
+    private static final long MONSTER_AGGRO_MS = 4000;
 
     private final World world;
     private final EventBus eventBus;
@@ -47,6 +49,9 @@ public final class CombatService {
             // 공격자 위치 기준으로 몬스터를 뒤로 밀어낸다. 공격자가 좌측이면 우측으로.
             double dir = target.x() >= attacker.x() ? 1 : -1;
             target.applyKnockback(dir * MONSTER_KNOCKBACK_SPEED, MONSTER_KNOCKBACK_MS);
+            // 넉백 이후에는 공격자를 추격. 배회 구간 밖으로 나가지는 않는다.
+            target.setPostKnockbackState(new mygame.game.ai.ChaseState(
+                    attacker, map.id(), MONSTER_AGGRO_MS));
             // 이동 브로드캐스트로 클라가 즉시 보간을 시작하도록 최신 상태를 전달.
             map.broadcast("MONSTER_MOVE",
                     new mygame.network.packets.Packets.MonsterMovedPacket(
