@@ -675,6 +675,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    // 채팅 입력 중 blur 트리거:
+    //   Escape           → 취소 (입력값 폐기)
+    //   Enter            → 전송 후 blur. 빈 값이면 그냥 blur.
+    //   방향키(↑↓←→)    → blur 후 해당 키를 다음 프레임부터 게임 입력으로 쓸 수 있게.
+    //                      preventDefault 하지 않아야 Phaser 쪽 keydown 이 정상 수신.
+    const arrowKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         input.blur();
@@ -685,6 +691,8 @@ export class GameScene extends Phaser.Scene {
         input.blur();
         if (!text) return;
         this.sendChat(text);
+      } else if (arrowKeys.has(e.key)) {
+        input.blur();
       }
     });
 
