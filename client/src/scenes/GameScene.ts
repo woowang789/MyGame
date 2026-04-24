@@ -15,6 +15,10 @@ import {
 const MOVE_SPEED = 200;
 const JUMP_VELOCITY = -450;
 const MOVE_PACKET_INTERVAL_MS = 100;
+/** 피격 넉백: 수평 밀림 속도 · 살짝 뜨는 높이 · 입력 잠금 시간(ms). */
+const KNOCKBACK_SPEED_X = 220;
+const KNOCKBACK_VELOCITY_Y = -180;
+const KNOCKBACK_DURATION_MS = 220;
 
 const MAPS = ['henesys', 'ellinia'] as const;
 
@@ -70,6 +74,8 @@ export class GameScene extends Phaser.Scene {
   private equippedSlots: Record<string, string> = {};
   /** 스킬별 남은 쿨다운 종료 시각(ms, performance.now 기준). HUD 카운트다운 표시용. */
   private readonly skillCooldownUntil = new Map<string, number>();
+  /** 넉백 종료 시각(performance.now 기준). 이 시각까지 좌우 입력을 무시해 밀려나는 느낌을 준다. */
+  private knockbackUntil = 0;
   private readonly hud = new HudView();
 
   private currentMapId = 'henesys';
@@ -324,7 +330,25 @@ export class GameScene extends Phaser.Scene {
     if (playerId === this.myId) {
       this.flashPlayerDamage();
       this.hud.updateHpImmediate(currentHp, maxHp);
+      this.applyPlayerKnockback(p.attackerId as number);
     }
+  }
+
+  /**
+   * 공격자(음수면 몬스터) 위치를 기준으로 플레이어를 반대 방향으로 밀어낸다.
+   * 서버는 넉백을 모르므로 다음 MOVE 패킷이 갱신된 좌표를 재동기화할 때까지
+   * 시각 효과가 살짝 남아있을 수 있지만, iframe 구간 내에서 마무리된다.
+   */
+  private applyPlayerKnockback(attackerId: number): void {
+    // attackerId 가 음수면 몬스터. 몬스터 id = -attackerId.
+    const monsterId = attackerId < 0 ? -attackerId : attackerId;
+    const monster = this.monsters.get(monsterId);
+    const attackerX = monster ? monster.sprite.x : this.player.x;
+    const dir = this.player.x >= attackerX ? 1 : -1;
+    this.player.setVelocityX(dir * KNOCKBACK_SPEED_X);
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    if (body.blocked.down) this.player.setVelocityY(KNOCKBACK_VELOCITY_Y);
+    this.knockbackUntil = performance.now() + KNOCKBACK_DURATION_MS;
   }
 
   private onPlayerDied(p: Packet): void {
@@ -449,7 +473,12 @@ export class GameScene extends Phaser.Scene {
   override update(time: number, delta: number): void {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
 
-    if (this.cursors.left.isDown) {
+    // 넉백 구간에는 입력으로 속도를 덮어쓰지 않고 관성·중력에 맡긴다.
+    // (onPlayerDamaged 가 performance.now() 기준으로 knockbackUntil 을 세팅.)
+    const knockback = performance.now() < this.knockbackUntil;
+    if (knockback) {
+      // 방향 플립은 유지. 수평 속도는 onPlayerDamaged 에서 이미 설정된 값이 감쇠한다.
+    } else if (this.cursors.left.isDown) {
       this.player.setVelocityX(-MOVE_SPEED);
       this.facing = 'left';
       this.player.setFlipX(true);
