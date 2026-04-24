@@ -33,8 +33,11 @@ public final class GameMap {
     /** 플레이어-몬스터 접촉 판정 박스. 간단한 AABB. */
     private static final double CONTACT_RANGE_X = 36;
     private static final double CONTACT_RANGE_Y = 50;
-    /** 피격 후 무적 시간. 깜빡임 연출과 동일 길이. */
-    private static final long IFRAME_MS = 800;
+    /**
+     * 피격 후 무적 시간. 몬스터 접촉이 잦은 지역에서 체력이 한 번에 쓸리지 않도록
+     * 충분히 길게 잡는다. 클라이언트 깜빡임 연출 길이와 맞춰야 시각적으로 자연스럽다.
+     */
+    private static final long IFRAME_MS = 1500;
 
     private final String id;
     private final double spawnX;
