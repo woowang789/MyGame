@@ -19,11 +19,13 @@ public final class World {
     private static final int SNAIL_EXP = 15;
     private static final long SNAIL_RESPAWN_MS = 5000;
 
-    /** 달팽이 드롭: 빨간 포션 50%, 껍질 40%, 파란 포션 10%. */
+    /** 달팽이 드롭: 빨간 포션 50%, 껍질 40%, 파란 포션 10%, 나무 검 5%, 가죽 모자 3%. */
     private static final DropTable SNAIL_DROPS = DropTable.of(
             new Entry("red_potion", 0.5),
             new Entry("snail_shell", 0.4),
-            new Entry("blue_potion", 0.1)
+            new Entry("blue_potion", 0.1),
+            new Entry("wooden_sword", 0.05),
+            new Entry("leather_cap", 0.03)
     );
 
     private final Map<String, GameMap> maps = new ConcurrentHashMap<>();

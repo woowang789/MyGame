@@ -61,14 +61,144 @@
         outline: none;
       }
       #chat-input:focus { border-color: #ffeb8a; }
+
+      /* Phase L — 로그인 화면 */
+      #login-root {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #0f0f17;
+        z-index: 100;
+      }
+      #login-card {
+        background: #1b1b2a;
+        padding: 28px 32px;
+        border-radius: 10px;
+        width: 320px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      #login-card h1 {
+        margin: 0 0 18px 0;
+        font-size: 20px;
+        color: #ffeb8a;
+        letter-spacing: 0.5px;
+      }
+      #login-card label {
+        display: block;
+        font-size: 12px;
+        color: #aab;
+        margin-top: 10px;
+      }
+      #login-card input {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 4px;
+        padding: 8px 10px;
+        background: #0e0e18;
+        color: #fff;
+        border: 1px solid #2a2a3b;
+        border-radius: 4px;
+        outline: none;
+        font-size: 13px;
+      }
+      #login-card input:focus { border-color: #ffeb8a; }
+      #login-buttons {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      #login-buttons button {
+        flex: 1;
+        padding: 9px 12px;
+        background: #2a2a3b;
+        color: #fff;
+        border: 1px solid #3a3a55;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      #login-buttons button:hover { background: #3a3a55; }
+      #login-buttons button.primary {
+        background: #ffeb8a;
+        color: #1b1b2a;
+        border-color: #ffeb8a;
+      }
+      #login-buttons button.primary:hover { background: #ffd84a; }
+      #login-msg {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #ff7a7a;
+        min-height: 16px;
+      }
+      #login-msg.ok { color: #7aff9c; }
+
+      /* Phase I — 장비 HUD */
+      #equip-box {
+        position: fixed;
+        right: 12px;
+        top: 132px;
+        width: 180px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      #equip-box .title {
+        color: #ffc64a;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      #equip-box .slot { display: flex; justify-content: space-between; }
+      #equip-box .slot .name { color: #9fdcff; }
+      #equip-box .slot .val { color: #fff; }
+      #equip-box .stats {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        color: #aee1ff;
+      }
+      #equip-box .hint {
+        margin-top: 6px;
+        font-size: 10px;
+        color: #888;
+      }
     </style>
   </head>
   <body>
-    <div id="hud">방향키 이동 · Space 공격 · Enter 채팅 · /w 이름 내용 = 귓속말</div>
+    <div id="login-root">
+      <div id="login-card">
+        <h1>MyGame 로그인</h1>
+        <label for="login-username">아이디 (3~16자, 영숫자/_/-)</label>
+        <input id="login-username" type="text" autocomplete="username" maxlength="16" />
+        <label for="login-password">비밀번호 (6자 이상)</label>
+        <input id="login-password" type="password" autocomplete="current-password" maxlength="64" />
+        <div id="login-buttons">
+          <button id="btn-login" class="primary" type="button">로그인</button>
+          <button id="btn-register" type="button">회원가입</button>
+        </div>
+        <div id="login-msg"></div>
+      </div>
+    </div>
+
+    <div id="hud">방향키 이동 · Space 공격 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
     <div id="game-root"></div>
     <div id="chat-box">
       <div id="chat-log"></div>
       <input id="chat-input" type="text" placeholder="Enter 키로 채팅 시작, /w 닉네임 메시지 로 귓속말" maxlength="200" />
+    </div>
+    <div id="equip-box">
+      <div class="title">장비</div>
+      <div class="slot"><span class="name">무기</span><span class="val" id="eq-weapon">-</span></div>
+      <div class="slot"><span class="name">모자</span><span class="val" id="eq-hat">-</span></div>
+      <div class="slot"><span class="name">갑옷</span><span class="val" id="eq-armor">-</span></div>
+      <div class="stats" id="eq-stats">ATK 0 · MAXHP 0</div>
+      <div class="hint">Q: 인벤 첫 장비 착용 · E: 전부 해제</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

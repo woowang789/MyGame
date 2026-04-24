@@ -1,6 +1,9 @@
 package mygame.game.entity;
 
+import mygame.game.item.Equipment;
 import mygame.game.item.Inventory;
+import mygame.game.stat.BaseStats;
+import mygame.game.stat.Stats;
 import mygame.network.packets.Packets.PlayerState;
 import org.java_websocket.WebSocket;
 
@@ -32,6 +35,7 @@ public final class Player {
     private volatile int level = 1;
     private volatile int exp = 0;
     private final Inventory inventory = new Inventory();
+    private final Equipment equipment = new Equipment();
 
     public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
         this.id = id;
@@ -56,6 +60,15 @@ public final class Player {
     public int level() { return level; }
     public int exp() { return exp; }
     public Inventory inventory() { return inventory; }
+    public Equipment equipment() { return equipment; }
+
+    /**
+     * 레벨 기본 스탯 + 장비 보너스(Decorator 체인)를 합산한 최종 스탯.
+     * 데미지 계산, 최대 HP 산정 등 "게임 로직이 참조해야 하는 값" 은 반드시 이쪽을 쓴다.
+     */
+    public Stats effectiveStats() {
+        return equipment.decorate(new BaseStats(level)).stats();
+    }
 
     /** 현 레벨 기준 다음 레벨까지 필요한 누적 EXP. 간단 선형식. */
     public int expToNextLevel() {

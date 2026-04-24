@@ -55,6 +55,31 @@ public final class Database implements AutoCloseable {
                     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
                 )
             """);
+            // Phase I: 슬롯별 장착 아이템. 한 슬롯에 최대 1점. unequip 시 행 삭제.
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS player_equipment (
+                    player_id BIGINT NOT NULL,
+                    slot VARCHAR(16) NOT NULL,
+                    item_id VARCHAR(64) NOT NULL,
+                    PRIMARY KEY (player_id, slot),
+                    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+                )
+            """);
+            // Phase L: 계정 테이블. username UNIQUE 로 로그인 키 보호.
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS accounts (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(32) NOT NULL UNIQUE,
+                    password_hash VARCHAR(256) NOT NULL,
+                    salt VARCHAR(64) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """);
+            // 기존 players 테이블에 account_id 컬럼을 추가(재실행 안전).
+            // H2 는 IF NOT EXISTS on ADD COLUMN 을 지원.
+            st.execute("""
+                ALTER TABLE players ADD COLUMN IF NOT EXISTS account_id BIGINT
+            """);
             log.info("DB 마이그레이션 완료.");
         } catch (SQLException e) {
             throw new RuntimeException("DB 마이그레이션 실패", e);

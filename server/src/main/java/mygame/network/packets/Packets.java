@@ -16,8 +16,18 @@ public final class Packets {
 
     // C→S
 
-    /** 클라이언트 입장 요청. 닉네임은 비어 있으면 서버가 기본값을 부여한다. */
+    // Phase L — 인증. LOGIN/REGISTER 성공 후에만 JOIN 이 허용된다.
+    public record LoginRequest(String username, String password) {}
+    public record RegisterRequest(String username, String password) {}
+
+    /**
+     * 클라이언트 입장 요청. Phase L 이후에는 세션이 이미 인증된 상태여야 한다.
+     * name 은 신규 캐릭터 생성용(계정에 캐릭터가 없을 때만 사용).
+     */
     public record JoinRequest(String name) {}
+
+    /** S→C 인증 결과. 실패 시 error 에 사유, 성공 시 accountId 반환. */
+    public record AuthResponse(boolean success, String error, long accountId, String username) {}
 
     /** 클라이언트 이동 갱신. 좌표와 속도를 같이 보내 예측/검증 기반을 마련. */
     public record MoveRequest(double x, double y, double vx, double vy) {}
@@ -100,4 +110,21 @@ public final class Packets {
 
     /** 채팅 수신 브로드캐스트/개별 전달. */
     public record ChatMessage(String scope, String sender, String message) {}
+
+    // Phase I — 장비
+
+    /** 인벤토리의 장비 아이템을 해당 슬롯에 장착 요청. */
+    public record EquipRequest(String templateId) {}
+
+    /** 슬롯 장비 해제 요청. slot 은 EquipSlot enum 이름("WEAPON" 등). */
+    public record UnequipRequest(String slot) {}
+
+    /**
+     * 플레이어 장비 전체 스냅샷. 본인 갱신 · 타인에게 외형 동기화 모두에 쓰인다.
+     * slots 는 slot enum 이름 → 아이템 템플릿 ID.
+     */
+    public record EquipmentPacket(int playerId, java.util.Map<String, String> slots) {}
+
+    /** 최종 스탯(장비 포함) 알림. 본인에게만 전송. */
+    public record StatsPacket(int maxHp, int attack, int speed) {}
 }

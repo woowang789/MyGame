@@ -19,19 +19,34 @@ import mygame.game.event.GameEvent.LeveledUp;
 import mygame.game.event.GameEvent.MonsterKilled;
 import mygame.network.packets.Packets.ChangeMapRequest;
 import mygame.network.packets.Packets.JoinRequest;
+import mygame.auth.AuthService;
+import mygame.auth.AuthService.AuthFailure;
+import mygame.auth.AuthService.AuthResult;
+import mygame.auth.AuthService.AuthSuccess;
+import mygame.db.AccountRepository;
 import mygame.db.Database;
+import mygame.db.JdbcAccountRepository;
 import mygame.db.JdbcPlayerRepository;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
+import mygame.network.packets.Packets.AuthResponse;
+import mygame.network.packets.Packets.LoginRequest;
+import mygame.network.packets.Packets.RegisterRequest;
 import mygame.game.SpawnPoint;
 import mygame.game.item.DroppedItem;
 import mygame.network.packets.Packets.AttackRequest;
 import mygame.network.packets.Packets.ChatMessage;
 import mygame.network.packets.Packets.ChatRequest;
 import mygame.network.packets.Packets.DroppedItemState;
+import mygame.network.packets.Packets.EquipRequest;
+import mygame.network.packets.Packets.EquipmentPacket;
 import mygame.network.packets.Packets.InventoryPacket;
 import mygame.network.packets.Packets.ExpUpdatedPacket;
 import mygame.network.packets.Packets.LevelUpPacket;
+import mygame.network.packets.Packets.StatsPacket;
+import mygame.network.packets.Packets.UnequipRequest;
+import mygame.game.item.EquipSlot;
+import mygame.game.item.ItemRegistry;
 import mygame.network.packets.Packets.MapChangedPacket;
 import mygame.network.packets.Packets.MonsterDamagedPacket;
 import mygame.network.packets.Packets.MonsterDiedPacket;
@@ -71,9 +86,18 @@ public final class GameServer extends WebSocketServer {
     private final ProgressionSystem progression = new ProgressionSystem(eventBus);
     private final Database database;
     private final PlayerRepository playerRepo;
+    private final AccountRepository accountRepo;
+    private final AuthService authService;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
+    /**
+     * Phase L: 로그인 성공한 소켓 → accountId 매핑. JOIN 패킷은 이 맵에 있는 소켓만 허용.
+     * 로그아웃/연결 종료 시 제거.
+     */
+    private final Map<WebSocket, Long> authenticatedAccounts = new ConcurrentHashMap<>();
+    /** 같은 계정의 중복 접속을 막기 위한 역인덱스. 값은 현재 접속 중인 소켓. */
+    private final Map<Long, WebSocket> accountSessions = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
 
     public GameServer(int port) {
@@ -86,16 +110,23 @@ public final class GameServer extends WebSocketServer {
                 "sa", "");
         this.database.runMigrations();
         this.playerRepo = new JdbcPlayerRepository(database);
+        this.accountRepo = new JdbcAccountRepository(database);
+        this.authService = new AuthService(accountRepo);
         registerHandlers();
     }
 
     private void registerHandlers() {
+        // Phase L — 인증은 JOIN 이전에 선행. REGISTER 는 성공해도 자동 로그인은 하지 않는다.
+        dispatcher.register("LOGIN", this::handleLogin);
+        dispatcher.register("REGISTER", this::handleRegister);
         dispatcher.register("JOIN", this::handleJoin);
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
         dispatcher.register("ATTACK", this::handleAttack);
         dispatcher.register("PICKUP", this::handlePickup);
         dispatcher.register("CHAT", this::handleChat);
+        dispatcher.register("EQUIP", this::handleEquip);
+        dispatcher.register("UNEQUIP", this::handleUnequip);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -131,6 +162,10 @@ public final class GameServer extends WebSocketServer {
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+        // Phase L: 인증 정보 항상 해제(JOIN 전 종료 포함)
+        Long acctId = authenticatedAccounts.remove(conn);
+        if (acctId != null) accountSessions.remove(acctId, conn);
+
         Player player = sessionPlayers.remove(conn);
         if (player == null) {
             log.info("JOIN 전에 연결 종료: remote={}", conn.getRemoteSocketAddress());
@@ -150,12 +185,22 @@ public final class GameServer extends WebSocketServer {
                         player.dbId(),
                         player.level(),
                         player.exp(),
-                        player.inventory().snapshot());
+                        player.inventory().snapshot(),
+                        equipmentSnapshotAsStringMap(player));
                 log.info("플레이어 저장: name={}, lv={}, exp={}", player.name(), player.level(), player.exp());
             } catch (Exception e) {
                 log.error("플레이어 저장 실패: name={}", player.name(), e);
             }
         }
+    }
+
+    /** Equipment 의 EnumMap 을 문자열 키 맵(DB · JSON 친화)으로 변환. */
+    private static Map<String, String> equipmentSnapshotAsStringMap(Player player) {
+        Map<String, String> m = new java.util.LinkedHashMap<>();
+        for (Map.Entry<EquipSlot, String> e : player.equipment().snapshot().entrySet()) {
+            m.put(e.getKey().name(), e.getValue());
+        }
+        return m;
     }
 
     @Override
@@ -182,29 +227,83 @@ public final class GameServer extends WebSocketServer {
 
     // --- 핸들러 ---
 
+    private void handleRegister(PacketContext ctx) throws Exception {
+        RegisterRequest req = ctx.json().treeToValue(ctx.body(), RegisterRequest.class);
+        AuthResult result = authService.register(req.username(), req.password());
+        if (result instanceof AuthFailure f) {
+            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
+                    new AuthResponse(false, f.message(), 0, "")));
+            return;
+        }
+        // 등록 성공은 단순히 성공 메시지만 전달. 클라이언트가 뒤이어 LOGIN 을 보낸다.
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
+                new AuthResponse(true, "", 0, req.username())));
+    }
+
+    private void handleLogin(PacketContext ctx) throws Exception {
+        LoginRequest req = ctx.json().treeToValue(ctx.body(), LoginRequest.class);
+        if (authenticatedAccounts.containsKey(ctx.conn())) {
+            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
+                    new AuthResponse(false, "이미 로그인 상태입니다.", 0, "")));
+            return;
+        }
+        AuthResult result = authService.login(req.username(), req.password());
+        if (result instanceof AuthFailure f) {
+            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
+                    new AuthResponse(false, f.message(), 0, "")));
+            return;
+        }
+        long accountId = ((AuthSuccess) result).account().id();
+        // 계정 1개 = 세션 1개 보장. 기존 소켓이 있으면 끊는다.
+        WebSocket prev = accountSessions.put(accountId, ctx.conn());
+        if (prev != null && prev != ctx.conn() && prev.isOpen()) {
+            prev.send(PacketEnvelope.error(ctx.json(), "다른 위치에서 로그인되어 연결이 종료됩니다."));
+            prev.close();
+        }
+        authenticatedAccounts.put(ctx.conn(), accountId);
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "AUTH",
+                new AuthResponse(true, "", accountId, req.username())));
+    }
+
     private void handleJoin(PacketContext ctx) throws Exception {
+        // Phase L: 인증 선행 필수
+        Long accountId = authenticatedAccounts.get(ctx.conn());
+        if (accountId == null) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "로그인이 필요합니다."));
+            return;
+        }
         if (sessionPlayers.containsKey(ctx.conn())) {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "already joined"));
             return;
         }
         JoinRequest req = ctx.json().treeToValue(ctx.body(), JoinRequest.class);
-        int id = playerIdSeq.getAndIncrement();
-        String name = (req.name() == null || req.name().isBlank()) ? ("Player" + id) : req.name();
 
-        // 중복 접속 방지: 이미 같은 이름이 붙어 있으면 거부
-        if (world.playerByName(name) != null) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "이미 접속 중인 이름입니다: " + name));
-            return;
+        // 해당 계정의 캐릭터가 이미 있으면 그 이름을 쓰고, 없으면 요청된 이름으로 신규 생성.
+        PlayerData data = playerRepo.findByAccountId(accountId).orElse(null);
+        String name;
+        if (data != null) {
+            name = data.name();
+        } else {
+            name = (req.name() == null || req.name().isBlank())
+                    ? ("Player" + accountId) : req.name();
+            // 다른 계정이 이미 이 이름으로 캐릭터를 가지고 있으면 거부(players.name UNIQUE).
+            if (playerRepo.findByName(name).isPresent()) {
+                ctx.conn().send(PacketEnvelope.error(ctx.json(),
+                        "이미 사용 중인 캐릭터 이름입니다: " + name));
+                return;
+            }
+            data = playerRepo.create(name, accountId);
         }
 
+        int id = playerIdSeq.getAndIncrement();
         GameMap map = world.defaultMap();
         Player player = new Player(id, name, ctx.conn(), map.id(), map.spawnX(), map.spawnY());
 
-        // DB 에서 로드하거나 없으면 신규 생성. 레벨/EXP/인벤토리 복원.
-        PlayerData data = playerRepo.findByName(name).orElseGet(() -> playerRepo.create(name));
         player.setDbId(data.id());
         player.restoreProgress(data.level(), data.exp());
         data.items().forEach(player.inventory()::add);
+        // 장비 복원: 슬롯별로 equip() 호출(원래 로직과 동일한 경로를 타게 해 불일치 제거).
+        data.equipment().forEach((slotName, itemId) -> player.equipment().equip(itemId));
 
         sessionPlayers.put(ctx.conn(), player);
         map.addPlayer(player);
@@ -220,11 +319,63 @@ public final class GameServer extends WebSocketServer {
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
         map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
 
-        // 복원된 진행도/인벤토리를 당사자에게 별도 전달
+        // 복원된 진행도/인벤토리/장비/최종 스탯을 당사자에게 전달
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "PLAYER_EXP",
                 new ExpUpdatedPacket(player.exp(), player.level(), player.expToNextLevel(), 0)));
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
                 new InventoryPacket(player.inventory().snapshot())));
+        sendEquipmentAndStats(player);
+    }
+
+    // --- Phase I 장비 핸들러 ---
+
+    private void handleEquip(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        EquipRequest req = ctx.json().treeToValue(ctx.body(), EquipRequest.class);
+        String itemId = req.templateId();
+        if (itemId == null || !ItemRegistry.isEquipment(itemId)) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "장비 아이템이 아닙니다."));
+            return;
+        }
+        if (!player.inventory().remove(itemId, 1)) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "인벤토리에 해당 장비가 없습니다."));
+            return;
+        }
+        String replaced = player.equipment().equip(itemId);
+        // 기존 장비는 인벤토리로 되돌린다(교체). 변경이 원자적이도록 이 순서가 중요.
+        if (replaced != null) player.inventory().add(replaced, 1);
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
+                new InventoryPacket(player.inventory().snapshot())));
+        sendEquipmentAndStats(player);
+    }
+
+    private void handleUnequip(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        UnequipRequest req = ctx.json().treeToValue(ctx.body(), UnequipRequest.class);
+        EquipSlot slot;
+        try {
+            slot = EquipSlot.valueOf(req.slot());
+        } catch (IllegalArgumentException e) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "알 수 없는 슬롯: " + req.slot()));
+            return;
+        }
+        String removed = player.equipment().unequip(slot);
+        if (removed == null) return;
+        player.inventory().add(removed, 1);
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
+                new InventoryPacket(player.inventory().snapshot())));
+        sendEquipmentAndStats(player);
+    }
+
+    /** 본인에게 장비 스냅샷과 최종 스탯을 함께 전달. 공격 피해량 등 UI 에 영향. */
+    private void sendEquipmentAndStats(Player player) {
+        player.connection().send(PacketEnvelope.wrap(json, "EQUIPMENT",
+                new EquipmentPacket(player.id(), equipmentSnapshotAsStringMap(player))));
+        mygame.game.stat.Stats s = player.effectiveStats();
+        player.connection().send(PacketEnvelope.wrap(json, "STATS",
+                new StatsPacket(s.maxHp(), s.attack(), s.speed())));
     }
 
     private void handleMove(PacketContext ctx) throws Exception {
@@ -359,7 +510,6 @@ public final class GameServer extends WebSocketServer {
     // 플레이어 중심 기준으로 상/하 모두 검사하여 서 있는 몬스터도 충분히 포함.
     private static final double ATTACK_RANGE_Y_UP = 60;
     private static final double ATTACK_RANGE_Y_DOWN = 60;
-    private static final int PLAYER_DAMAGE = 25;
 
     private void handleAttack(PacketContext ctx) throws Exception {
         Player player = ctx.player();
@@ -384,7 +534,9 @@ public final class GameServer extends WebSocketServer {
             if (m.x() < hitMinX || m.x() > hitMaxX) continue;
             if (m.y() < hitMinY || m.y() > hitMaxY) continue;
 
-            int dmg = m.applyDamage(PLAYER_DAMAGE);
+            // Phase I: 데미지 = 최종 스탯의 attack. Decorator 체인이 레벨 + 장비 보너스를 합산.
+            int attack = player.effectiveStats().attack();
+            int dmg = m.applyDamage(attack);
             map.broadcast("MONSTER_DAMAGED",
                     new MonsterDamagedPacket(m.id(), dmg, m.hp(), player.id()));
             if (m.isDead()) {

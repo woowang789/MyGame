@@ -20,6 +20,25 @@ public final class Inventory {
         counts.merge(templateId, amount, Integer::sum);
     }
 
+    /**
+     * 지정 수량을 차감. 보유량이 부족하면 {@code false} 반환(변경 없음).
+     * 0 이 되면 맵에서 엔트리 자체를 제거해 UI 에 빈 줄이 남지 않게 한다.
+     */
+    public synchronized boolean remove(String templateId, int amount) {
+        if (amount <= 0) return true;
+        Integer cur = counts.get(templateId);
+        if (cur == null || cur < amount) return false;
+        int next = cur - amount;
+        if (next == 0) counts.remove(templateId);
+        else counts.put(templateId, next);
+        return true;
+    }
+
+    public synchronized boolean has(String templateId) {
+        Integer cur = counts.get(templateId);
+        return cur != null && cur > 0;
+    }
+
     public synchronized Map<String, Integer> snapshot() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(counts));
     }

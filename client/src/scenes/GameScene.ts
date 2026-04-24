@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { SERVER_URL } from '../config';
+import type { AuthedSession } from '../auth/LoginScreen';
 import { DroppedItemSprite, ITEM_NAMES } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
-import { WebSocketClient, type Packet } from '../network/WebSocketClient';
+import type { WebSocketClient, Packet } from '../network/WebSocketClient';
 
 const TILESET_NAME = 'tiles';
 const TILESET_TEXTURE = 'tiles-tex';
@@ -55,19 +55,25 @@ export class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private attackKey!: Phaser.Input.Keyboard.Key;
+  private equipKey!: Phaser.Input.Keyboard.Key;
+  private unequipKey!: Phaser.Input.Keyboard.Key;
   private myLabel!: Phaser.GameObjects.Text;
   private facing: 'left' | 'right' = 'right';
   private statusLabel!: Phaser.GameObjects.Text;
   private expBarFill!: Phaser.GameObjects.Rectangle;
-  private network = new WebSocketClient(SERVER_URL);
+  private readonly network: WebSocketClient;
   private lastMoveSentAt = 0;
   private myId = -1;
-  private readonly playerName = this.generatePlayerName();
+  private readonly playerName: string;
   private readonly remotes = new Map<number, RemotePlayer>();
   private readonly monsters = new Map<number, MonsterSprite>();
   private readonly droppedItems = new Map<number, DroppedItemSprite>();
   private lastPickupAttemptAt = 0;
   private invLabel!: Phaser.GameObjects.Text;
+  /** 인벤토리 스냅샷. Q 키로 첫 장비를 찾을 때 참조. */
+  private inventoryItems: Record<string, number> = {};
+  /** 현재 착용 중인 장비 슬롯. E 키로 해제. */
+  private equippedSlots: Record<string, string> = {};
 
   private currentMapId = 'henesys';
   private tilemap: Phaser.Tilemaps.Tilemap | null = null;
@@ -76,8 +82,10 @@ export class GameScene extends Phaser.Scene {
   // 맵 전환 직후 도착 지점이 복귀 포털 위라도 "이미 겹친 상태"로 취급되어 바로 되돌아가지 않게 한다.
   private activePortalIndex = -1;
 
-  constructor() {
+  constructor(network: WebSocketClient, session: AuthedSession) {
     super('GameScene');
+    this.network = network;
+    this.playerName = session.username;
   }
 
   preload(): void {
@@ -110,6 +118,8 @@ export class GameScene extends Phaser.Scene {
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.equipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    this.unequipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
 
     this.createHud();
     this.setupChatInput();
@@ -195,14 +205,14 @@ export class GameScene extends Phaser.Scene {
     this.network.on('ITEM_REMOVED', (p) => this.onItemRemoved(p));
     this.network.on('INVENTORY', (p) => this.onInventory(p));
     this.network.on('CHAT', (p) => this.onChat(p));
+    this.network.on('EQUIPMENT', (p) => this.onEquipment(p));
+    this.network.on('STATS', (p) => this.onStats(p));
     this.network.on('ERROR', (p) => {
       console.warn('[Server ERROR]', p.message);
       this.appendChatLog('sys', `[오류] ${p.message}`);
     });
-    this.network.onOpen(() => {
-      this.network.send({ type: 'JOIN', name: this.playerName });
-    });
-    this.network.connect();
+    // 인증은 이미 완료되어 있다. 즉시 JOIN 전송.
+    this.network.send({ type: 'JOIN', name: this.playerName });
   }
 
   private onWelcome(p: Packet): void {
@@ -320,10 +330,45 @@ export class GameScene extends Phaser.Scene {
 
   private onInventory(p: Packet): void {
     const items = p.items as Record<string, number>;
+    this.inventoryItems = items;
     const lines = Object.entries(items)
       .map(([k, v]) => `${ITEM_NAMES[k] ?? k}: ${v}`)
       .join('\n');
     this.invLabel.setText(lines || '(비어 있음)');
+  }
+
+  private onEquipment(p: Packet): void {
+    const slots = (p.slots ?? {}) as Record<string, string>;
+    this.equippedSlots = slots;
+    const setSlot = (id: string, slot: string) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const itemId = slots[slot];
+      el.textContent = itemId ? (ITEM_NAMES[itemId] ?? itemId) : '-';
+      el.style.color = itemId ? '#ffeb8a' : '#666';
+    };
+    setSlot('eq-weapon', 'WEAPON');
+    setSlot('eq-hat', 'HAT');
+    setSlot('eq-armor', 'ARMOR');
+  }
+
+  private onStats(p: Packet): void {
+    const el = document.getElementById('eq-stats');
+    if (!el) return;
+    const attack = p.attack as number;
+    const maxHp = p.maxHp as number;
+    el.textContent = `ATK ${attack} · MAXHP ${maxHp}`;
+  }
+
+  /** 인벤토리에서 장비로 보이는 첫 아이템 ID 반환(없으면 null). */
+  private firstEquipmentInInventory(): string | null {
+    // ITEM_NAMES 에 등록된 이름 중 "검/모자/갑옷" 을 포함하는 것을 장비로 본다.
+    // (클라는 서버의 EQUIPMENT 판정을 직접 모르므로 명시된 알려진 ID 목록을 사용.)
+    const EQUIPMENT_IDS = new Set(['wooden_sword', 'iron_sword', 'leather_cap', 'cloth_armor']);
+    for (const id of Object.keys(this.inventoryItems)) {
+      if (EQUIPMENT_IDS.has(id) && (this.inventoryItems[id] ?? 0) > 0) return id;
+    }
+    return null;
   }
 
   override update(time: number, delta: number): void {
@@ -345,6 +390,17 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.attackKey) && this.network.isOpen) {
       this.network.send({ type: 'ATTACK', dir: this.facing });
       this.spawnAttackEffect();
+    }
+
+    // Q: 인벤토리 첫 장비 착용. E: 착용한 모든 슬롯 해제.
+    if (Phaser.Input.Keyboard.JustDown(this.equipKey) && this.network.isOpen) {
+      const id = this.firstEquipmentInInventory();
+      if (id) this.network.send({ type: 'EQUIP', templateId: id });
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.unequipKey) && this.network.isOpen) {
+      for (const slot of Object.keys(this.equippedSlots)) {
+        this.network.send({ type: 'UNEQUIP', slot });
+      }
     }
 
     // 점프
@@ -574,10 +630,6 @@ export class GameScene extends Phaser.Scene {
       duration: 160,
       onComplete: () => slash.destroy()
     });
-  }
-
-  private generatePlayerName(): string {
-    return 'User-' + Math.floor(Math.random() * 9000 + 1000);
   }
 
   private generateTilesetTexture(): void {
