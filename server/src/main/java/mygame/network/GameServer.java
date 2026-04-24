@@ -121,6 +121,8 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("EQUIP", this::handleEquip);
         dispatcher.register("UNEQUIP", this::handleUnequip);
         dispatcher.register("USE_SKILL", this::handleUseSkill);
+        dispatcher.register("USE_ITEM", this::handleUseItem);
+        dispatcher.register("DROP_ITEM", this::handleDropItem);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -516,21 +518,81 @@ public final class GameServer extends WebSocketServer {
         for (DroppedItem d : map.droppedItems()) {
             double dx = d.x() - player.x();
             double dy = d.y() - player.y();
-            if (Math.abs(dx) <= PICKUP_RANGE && Math.abs(dy) <= PICKUP_RANGE) {
+            if (Math.abs(dx) > PICKUP_RANGE || Math.abs(dy) > PICKUP_RANGE) continue;
+
+            if (d.isMeso()) {
+                // 메소는 지갑으로 — 용량 제한과 무관.
                 if (map.takeDroppedItem(d.id()) == null) continue;
-                if (d.isMeso()) {
-                    // 메소는 인벤토리가 아닌 지갑에 들어간다. 변화량도 함께 통지.
-                    int gained = d.amount();
-                    player.addMeso(gained);
-                    player.connection().send(PacketEnvelope.wrap(json, "MESO",
-                            new mygame.network.packets.Packets.MesoUpdatedPacket(player.meso(), gained)));
-                } else {
-                    player.inventory().add(d.templateId(), 1);
-                    player.connection().send(PacketEnvelope.wrap(json, "INVENTORY",
-                            new InventoryPacket(player.inventory().snapshot())));
-                }
+                int gained = d.amount();
+                player.addMeso(gained);
+                player.connection().send(PacketEnvelope.wrap(json, "MESO",
+                        new mygame.network.packets.Packets.MesoUpdatedPacket(player.meso(), gained)));
+                continue;
             }
+
+            // 인벤토리 용량 선검사: 가득 찬 상태라면 드롭을 유지하고 사용자에게 알림.
+            // 같은 id 스택 증가는 항상 허용되므로 checkAdd 전에 시도해봐야 한다.
+            if (map.takeDroppedItem(d.id()) == null) continue;
+            boolean added = player.inventory().add(d.templateId(), 1);
+            if (!added) {
+                // 실패 — 아이템을 다시 맵에 되돌리고 사용자에게 경고.
+                map.addDroppedItem(d);
+                player.connection().send(PacketEnvelope.error(json, "인벤토리가 가득 찼습니다."));
+                continue;
+            }
+            player.connection().send(PacketEnvelope.wrap(json, "INVENTORY",
+                    new InventoryPacket(player.inventory().snapshot())));
         }
+    }
+
+    // --- Phase D: 소비 / 드롭 ---
+
+    private void handleUseItem(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        if (player.isDead()) return;
+        var req = ctx.json().treeToValue(ctx.body(),
+                mygame.network.packets.Packets.UseItemRequest.class);
+        String id = req.templateId();
+        if (id == null) return;
+        var template = mygame.game.item.ItemRegistry.get(id);
+        if (template.type() != mygame.game.item.ItemTemplate.ItemType.CONSUMABLE) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "소비 아이템이 아닙니다."));
+            return;
+        }
+        if (!player.inventory().remove(id, 1)) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "보유하고 있지 않은 아이템입니다."));
+            return;
+        }
+        var effect = template.use();
+        if (effect.heal() > 0) player.restoreHp(effect.heal());
+        if (effect.manaHeal() > 0) player.restoreMp(effect.manaHeal());
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
+                new InventoryPacket(player.inventory().snapshot())));
+        sendStats(player);
+    }
+
+    private void handleDropItem(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        if (player.isDead()) return;
+        var req = ctx.json().treeToValue(ctx.body(),
+                mygame.network.packets.Packets.DropItemRequest.class);
+        String id = req.templateId();
+        int amount = Math.max(1, req.amount());
+        if (id == null) return;
+        if (!player.inventory().remove(id, amount)) {
+            ctx.conn().send(PacketEnvelope.error(ctx.json(), "버릴 수량이 충분하지 않습니다."));
+            return;
+        }
+        GameMap map = world.map(player.mapId());
+        if (map == null) return;
+        // 드롭은 플레이어 발밑에 놓는다. TTL 은 기본 60초.
+        map.addDroppedItem(new DroppedItem(
+                world.itemIdSeq().getAndIncrement(),
+                id, player.x(), player.y(), 60_000, amount));
+        ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
+                new InventoryPacket(player.inventory().snapshot())));
     }
 
     // --- 공격 ---

@@ -137,10 +137,23 @@ export class GameScene extends Phaser.Scene {
     // 인벤/장비 슬롯의 더블클릭 → 서버 패킷으로 위임.
     this.hud.onInventoryAction((action) => {
       if (!this.network.isOpen) return;
-      if (action.kind === 'equip') {
-        this.network.send({ type: 'EQUIP', templateId: action.templateId });
-      } else if (action.kind === 'unequip') {
-        this.network.send({ type: 'UNEQUIP', slot: action.slot });
+      switch (action.kind) {
+        case 'equip':
+          this.network.send({ type: 'EQUIP', templateId: action.templateId });
+          break;
+        case 'unequip':
+          this.network.send({ type: 'UNEQUIP', slot: action.slot });
+          break;
+        case 'use':
+          this.network.send({ type: 'USE_ITEM', templateId: action.templateId });
+          break;
+        case 'drop':
+          this.network.send({
+            type: 'DROP_ITEM',
+            templateId: action.templateId,
+            amount: action.amount
+          });
+          break;
       }
     });
 

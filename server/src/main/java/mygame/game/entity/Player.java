@@ -110,6 +110,14 @@ public final class Player {
         mp = Math.min(max, mp + amount);
     }
 
+    /** HP 회복. 사망 상태에서는 회복하지 않는다(부활 경로로만 HP 가 채워져야 함). */
+    public synchronized void restoreHp(int amount) {
+        if (amount <= 0) return;
+        if (hp <= 0) return;
+        int max = effectiveStats().maxHp();
+        hp = Math.min(max, hp + amount);
+    }
+
     /** 로그인/레벨업 시 MP 를 최대치로 채운다. 현재 단계에서는 사망 시스템이 없어 간단 처리. */
     public synchronized void fullHealMp() {
         mp = effectiveStats().maxMp();

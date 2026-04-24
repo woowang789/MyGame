@@ -114,6 +114,14 @@ public final class Packets {
     /** 채팅 수신 브로드캐스트/개별 전달. */
     public record ChatMessage(String scope, String sender, String message) {}
 
+    // Phase D — 인벤토리 상호작용
+
+    /** 소비 아이템 사용 요청. 해당 아이템 1개를 소모하고 효과를 적용. */
+    public record UseItemRequest(String templateId) {}
+
+    /** 인벤 아이템을 월드에 떨어뜨리는 요청. amount 만큼 차감 후 DroppedItem 생성. */
+    public record DropItemRequest(String templateId, int amount) {}
+
     // Phase I — 장비
 
     /** 인벤토리의 장비 아이템을 해당 슬롯에 장착 요청. */
