@@ -7,6 +7,7 @@
 - **통신**: WebSocket + JSON 패킷
 
 자세한 방향성/로드맵은 [CLAUDE.md](./CLAUDE.md) 참고.
+구현 상세 문서는 [docs/](./docs/README.md) 참고.
 
 ---
 
