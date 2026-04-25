@@ -106,6 +106,26 @@ EXP/메소/아이템 획득을 채팅창에서 분리해 좌하단 전용 영역
 
 각 라인은 4초 표시 후 0.6초 페이드아웃, 최대 6줄 유지(초과 시 가장 오래된 것부터 제거).
 
+## 4.3 전투 진입점 통일 (2026-04-25)
+
+기본 공격을 별도 핸들러로 두지 않고 **스킬 시민**으로 합류시켜 전투 경로를 단일화.
+
+### 변화
+
+- `BasicAttack` 스킬 신설 (`mpCost=0`, `cooldownMs=350`). `Skill.permits` · `SkillRegistry` 등록
+- 모든 스킬이 `CombatService.damageMonster` 한 진입점으로 데미지 적용 — 패킷 송출 + 넉백 + 사망 마무리가 자동
+- `SkillContext` 에 `CombatService` 추가, `SkillOutcome` 제거 (호출자 외부에서 결과를 다시 순회할 이유가 없어짐)
+- `CombatHandler.handleAttack` 제거. `Packets.AttackRequest` 제거. `ATTACK` 패킷 디스패처 등록 제거
+- 클라 Space 입력 → `USE_SKILL{skillId:"basic_attack"}` 송신
+- 클라 `onSkillUsed` 가 본인의 basic_attack SKILL_USED 는 무시(입력 즉시 그린 슬래시와 중복 방지), 타인의 것만 슬래시 렌더
+
+### 효과
+
+- 핸들러 1개 감소, `handleUseSkill` 도 outcome 순회 블록이 사라져 ~50줄 → ~30줄
+- 자동 공격 속도 제한이 자연스럽게 도입(350ms 쿨다운)
+- 다른 플레이어의 기본 공격 시각화가 가능해짐(SKILL_USED 브로드캐스트 경유)
+- META 패킷에 basic_attack 도 자동 포함되어 SSoT 일관성 유지
+
 ## 5. 검증 방식
 
 리팩토링과 기능 추가 모두 다음을 통과시켰다:

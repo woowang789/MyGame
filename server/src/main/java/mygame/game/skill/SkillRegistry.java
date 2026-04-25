@@ -20,6 +20,8 @@ public final class SkillRegistry {
 
     static {
         Map<String, Skill> m = new LinkedHashMap<>();
+        // 기본 공격도 스킬 시민. 클라 UI 는 id === "basic_attack" 만 별도 처리.
+        put(m, BasicAttack.INSTANCE);
         put(m, PowerStrike.INSTANCE);
         put(m, TripleBlow.INSTANCE);
         put(m, Recovery.INSTANCE);
