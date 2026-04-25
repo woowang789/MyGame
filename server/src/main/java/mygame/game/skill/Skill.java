@@ -13,7 +13,7 @@ package mygame.game.skill;
  *       전직 후 해당 직업 태그의 스킬만 사용 가능하도록 검증한다.
  * </ul>
  */
-public sealed interface Skill permits PowerStrike, TripleBlow, Recovery {
+public sealed interface Skill permits BasicAttack, PowerStrike, TripleBlow, Recovery {
 
     /** 초보자 공용 스킬 태그. 전직 전 모든 캐릭터가 사용 가능. */
     String JOB_BEGINNER = "BEGINNER";

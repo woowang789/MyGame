@@ -1,8 +1,5 @@
 package mygame.game.skill;
 
-import mygame.game.skill.Skill;
-import mygame.game.skill.SkillContext;
-
 /**
  * 초보자 스킬 — 리커버리.
  *
@@ -23,9 +20,7 @@ public final class Recovery implements Skill {
 
     @Override
     public void apply(SkillContext ctx) {
-        int before = ctx.caster().mp();
+        // 자기 회복은 몬스터 데미지 경로와 무관. MP 변화는 STATS 패킷이 자체적으로 동기화한다.
         ctx.caster().restoreMp(MP_RESTORED);
-        int delta = ctx.caster().mp() - before;
-        ctx.outcome().setMpRestored(delta);
     }
 }

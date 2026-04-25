@@ -111,7 +111,7 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("JOIN", this::handleJoin);
         dispatcher.register("MOVE", this::handleMove);
         dispatcher.register("CHANGE_MAP", this::handleChangeMap);
-        dispatcher.register("ATTACK", combatHandler::handleAttack);
+        // ATTACK 패킷 제거: 기본 공격은 USE_SKILL{skillId:"basic_attack"} 한 경로로 통합.
         dispatcher.register("USE_SKILL", combatHandler::handleUseSkill);
         dispatcher.register("PICKUP", inventoryHandler::handlePickup);
         dispatcher.register("EQUIP", inventoryHandler::handleEquip);

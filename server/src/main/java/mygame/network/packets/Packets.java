@@ -88,8 +88,7 @@ public final class Packets {
     /** 몬스터 이동 브로드캐스트. 저빈도 송신(상태 변경 시 + 주기적 샘플). */
     public record MonsterMovedPacket(int id, double x, double vx) {}
 
-    /** 공격 요청. 대상은 서버가 플레이어 공격 박스로 판정. */
-    public record AttackRequest(String dir) {}
+    // ATTACK 요청 제거(2026-04-25): 기본 공격은 USE_SKILL{skillId:"basic_attack"} 로 통합.
 
     /** 몬스터가 피격당했음을 알리는 브로드캐스트. */
     public record MonsterDamagedPacket(int id, int dmg, int hp, int attackerId) {}

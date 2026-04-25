@@ -471,13 +471,22 @@ export class GameScene extends Phaser.Scene {
   private onSkillUsed(p: Packet): void {
     const playerId = p.playerId as number;
     const skillId = p.skillId as string;
+    const dir = (p.dir as string) ?? 'right';
     const x = playerId === this.myId
       ? this.player.x
       : this.remotes.get(playerId)?.sprite.x ?? 0;
     const y = playerId === this.myId
       ? this.player.y
       : this.remotes.get(playerId)?.sprite.y ?? 0;
-    this.effects.spawnSkillEffect(skillId, x, y, (p.dir as string) ?? 'right');
+    if (skillId === 'basic_attack') {
+      // 본인은 입력 즉시 슬래시를 이미 그렸으므로 중복 렌더 방지.
+      // 다른 플레이어의 기본 공격은 같은 슬래시 이펙트로 시각화한다.
+      if (playerId !== this.myId) {
+        this.effects.spawnAttackSlash(x, y, dir === 'left' ? 'left' : 'right');
+      }
+      return;
+    }
+    this.effects.spawnSkillEffect(skillId, x, y, dir);
   }
 
   /** 인벤토리에서 장비로 보이는 첫 아이템 ID 반환(없으면 null). */
@@ -532,8 +541,17 @@ export class GameScene extends Phaser.Scene {
   /** Space/Q/E/I/Esc 등 1프레임 단발 액션 입력. */
   private handleActions(): void {
     if (Phaser.Input.Keyboard.JustDown(this.attackKey) && this.network.isOpen) {
-      this.network.send({ type: 'ATTACK', dir: this.facing });
-      this.effects.spawnAttackSlash(this.player.x, this.player.y, this.facing);
+      // 기본 공격도 스킬 시민. 서버는 USE_SKILL 한 경로로 모든 공격 행동을 검증·송출한다.
+      // 클라 측 쿨다운 예측은 handleSkills 와 동일 맵을 공유해 일관되게 동작한다.
+      const skillId = 'basic_attack';
+      const time = this.time.now;
+      const until = this.skillCooldownUntil.get(skillId) ?? 0;
+      if (time >= until) {
+        const meta = SKILL_META[skillId];
+        if (meta) this.skillCooldownUntil.set(skillId, time + meta.cooldownMs);
+        this.network.send({ type: 'USE_SKILL', skillId, dir: this.facing });
+        this.effects.spawnAttackSlash(this.player.x, this.player.y, this.facing);
+      }
     }
 
     // Q: 인벤토리 첫 장비 착용. E: 착용한 모든 슬롯 해제.

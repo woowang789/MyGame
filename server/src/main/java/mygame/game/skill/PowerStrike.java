@@ -23,12 +23,10 @@ public final class PowerStrike implements Skill {
     @Override
     public void apply(SkillContext ctx) {
         var targets = AttackBox.nearestInFront(ctx.caster(), ctx.map(), ctx.dir(), 1.0, MAX_TARGETS);
-        if (targets.isEmpty()) return;
         int dmg = (int) Math.round(ctx.caster().effectiveStats().attack() * DAMAGE_MUL);
+        // CombatService 가 타격당 패킷 송출·넉백·사망 마무리를 일괄 처리한다.
         for (Monster target : targets) {
-            if (target.isDead()) continue;
-            int applied = target.applyDamage(dmg);
-            ctx.outcome().addHit(target.id(), applied, target.hp(), target.isDead());
+            ctx.combatService().damageMonster(ctx.map(), ctx.caster(), target, dmg);
         }
     }
 }

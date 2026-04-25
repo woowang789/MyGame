@@ -170,7 +170,7 @@ ItemRegistry (id → ItemTemplate)        ← Factory 패턴 변종
 [`Skill.java`](../server/src/main/java/mygame/game/skill/Skill.java) 는 `sealed interface`:
 
 ```java
-public sealed interface Skill permits PowerStrike, TripleBlow, Recovery {
+public sealed interface Skill permits BasicAttack, PowerStrike, TripleBlow, Recovery {
     String JOB_BEGINNER = "BEGINNER";
     String id(); String name(); String job();
     int mpCost(); long cooldownMs();
@@ -179,19 +179,16 @@ public sealed interface Skill permits PowerStrike, TripleBlow, Recovery {
 ```
 
 각 스킬은 `INSTANCE` 싱글턴이고 상태가 없다 — 플레이어 별 쿨다운/MP 는 `Player` 에 보관.
+**기본 공격도 스킬의 일원**(`BasicAttack`) 이라 `USE_SKILL{skillId:"basic_attack"}` 한 경로로 처리된다.
 
-### 7.1 SkillContext / SkillOutcome
+### 7.1 SkillContext
 
 ```java
-record SkillContext(Player caster, GameMap map, String dir, long now, SkillOutcome outcome) {
-    static SkillContext of(...) { ... }
-}
-record SkillOutcome(List<Hit> hits) {
-    record Hit(int monsterId, int damage, int remainingHp, boolean killed) {}
-}
+record SkillContext(Player caster, GameMap map, String dir, long now,
+                    int attackerId, CombatService combatService) {}
 ```
 
-스킬 구현체는 `ctx.outcome().hits().add(...)` 로 결과를 적재하기만 하고, 데미지 패킷 송출은 호출자(`CombatHandler`)가 일괄 처리. 책임이 깔끔히 갈린다.
+스킬 구현체는 `ctx.combatService().damageMonster(map, caster, target, dmg)` 한 줄로 타격을 위임한다. CombatService 가 데미지 적용·MONSTER_DAMAGED 브로드캐스트·넉백·사망 시 finishKill 까지 일괄 처리하므로 스킬 본체는 *대상 선택 + 데미지 공식* 만 책임진다.
 
 ### 7.2 AttackBox
 

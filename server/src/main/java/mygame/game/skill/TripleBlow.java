@@ -26,14 +26,12 @@ public final class TripleBlow implements Skill {
         var targets = AttackBox.nearestInFront(ctx.caster(), ctx.map(), ctx.dir(), 1.0, MAX_TARGETS);
         if (targets.isEmpty()) return;
         int perHit = (int) Math.round(ctx.caster().effectiveStats().attack() * DAMAGE_MUL_PER_HIT);
-        for (Monster m : targets) {
-            if (m.isDead()) continue;
-            int total = 0;
-            for (int i = 0; i < HITS; i++) {
-                if (m.isDead()) break;
-                total += m.applyDamage(perHit);
-            }
-            ctx.outcome().addHit(m.id(), total, m.hp(), m.isDead());
+        // 각 타격을 CombatService 로 위임. 이미 죽은 대상엔 추가 타격이 들어가지 않게
+        // damageMonster 가 isDead 체크를 자체적으로 수행하므로 호출자는 단순 반복만.
+        Monster target = targets.get(0);
+        for (int i = 0; i < HITS; i++) {
+            if (target.isDead()) break;
+            ctx.combatService().damageMonster(ctx.map(), ctx.caster(), target, perHit);
         }
     }
 }

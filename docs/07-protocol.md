@@ -52,8 +52,7 @@ interface SkillMetaEntry { id: string; name: string; mpCost: number; cooldownMs:
 
 | 방향 | type | 필드 |
 |---|---|---|
-| C → S | `ATTACK` | `dir` |
-| C → S | `USE_SKILL` | `skillId`, `dir` |
+| C → S | `USE_SKILL` | `skillId`, `dir` (기본 공격은 `skillId="basic_attack"`) |
 | S → C | `SKILL_USED` | `playerId`, `skillId`, `dir` (이펙트용 브로드캐스트) |
 | S → C | `PLAYER_DAMAGED` | `playerId`, `dmg`, `currentHp`, `maxHp`, `attackerId` (음수 = 몬스터 -id) |
 | S → C | `PLAYER_DIED` | `playerId` |
