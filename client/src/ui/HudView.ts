@@ -215,7 +215,8 @@ export class HudView {
       });
     });
 
-    this.bindInventoryDrag();
+    this.bindWindowDrag('inventory-window', 'inv-pos');
+    this.bindWindowDrag('stat-window', 'stat-pos');
 
     // 슬롯 hover 툴팁 (이벤트 위임)
     const grid = document.getElementById('inv-grid');
@@ -389,19 +390,22 @@ export class HudView {
   }
 
   /**
-   * 인벤토리 창을 헤더로 잡아 드래그 이동 가능하게 한다.
+   * 창 헤더로 잡아 드래그 이동 가능하게 한다. 인벤토리·스탯창 등 같은 패턴 공유.
    *
-   * 초기 CSS 는 `top:50%; left:50%; transform: translate(-50%,-50%)` 중앙 정렬.
+   * <p>초기 CSS 는 `top:50%; left:50%; transform: translate(-50%,-50%)` 중앙 정렬.
    * 첫 드래그 시 transform 을 벗기고 실제 픽셀 좌표로 고정해 이후 left/top 만 갱신한다.
    * 위치는 계정별 localStorage 에 저장해 재접속 시 복원(탭 순서 저장 패턴과 동일).
+   *
+   * @param windowId  대상 창의 DOM id
+   * @param storageKeyPrefix  localStorage 네임스페이스(예: 'inv-pos', 'stat-pos')
    */
-  private bindInventoryDrag(): void {
-    const win = document.getElementById('inventory-window');
+  private bindWindowDrag(windowId: string, storageKeyPrefix: string): void {
+    const win = document.getElementById(windowId);
     const header = win?.querySelector('.header') as HTMLElement | null;
     if (!win || !header) return;
 
-    // 저장된 위치 복원
-    this.restoreInventoryPosition(win);
+    const storageKey = () => `${storageKeyPrefix}:${this.accountKey}`;
+    this.restoreWindowPosition(win, storageKey());
 
     let startX = 0;
     let startY = 0;
@@ -429,7 +433,7 @@ export class HudView {
       win.classList.remove('dragging');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      this.saveInventoryPosition(win);
+      this.saveWindowPosition(win, storageKey());
     };
 
     header.addEventListener('mousedown', (e) => {
@@ -452,14 +456,10 @@ export class HudView {
     });
   }
 
-  private inventoryPosKey(): string {
-    return `inv-pos:${this.accountKey}`;
-  }
-
-  private saveInventoryPosition(win: HTMLElement): void {
+  private saveWindowPosition(win: HTMLElement, key: string): void {
     try {
       window.localStorage.setItem(
-        this.inventoryPosKey(),
+        key,
         JSON.stringify({ left: win.style.left, top: win.style.top })
       );
     } catch {
@@ -467,9 +467,9 @@ export class HudView {
     }
   }
 
-  private restoreInventoryPosition(win: HTMLElement): void {
+  private restoreWindowPosition(win: HTMLElement, key: string): void {
     try {
-      const raw = window.localStorage.getItem(this.inventoryPosKey());
+      const raw = window.localStorage.getItem(key);
       if (!raw) return;
       const { left, top } = JSON.parse(raw) as { left?: string; top?: string };
       if (!left || !top) return;
