@@ -36,6 +36,11 @@ public final class ItemRegistry {
                 ItemType.EQUIPMENT, EquipSlot.HAT, new Stats(15, 5, 0, 0)));
         put(m, new ItemTemplate("cloth_armor", "천 갑옷", 0xcfa16a,
                 ItemType.EQUIPMENT, EquipSlot.ARMOR, new Stats(25, 0, 0, 0)));
+        // 새 슬롯 추가 검증용. 게임 로직(Player·CombatService) 은 변경 없이 동작해야 한다.
+        put(m, new ItemTemplate("work_gloves", "작업 장갑", 0x7d5b3a,
+                ItemType.EQUIPMENT, EquipSlot.GLOVES, new Stats(0, 0, 4, 0)));
+        put(m, new ItemTemplate("running_shoes", "달리기 신발", 0x4caf50,
+                ItemType.EQUIPMENT, EquipSlot.SHOES, new Stats(0, 0, 0, 30)));
         TEMPLATES = Collections.unmodifiableMap(m);
     }
 
