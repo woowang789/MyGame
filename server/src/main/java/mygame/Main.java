@@ -26,10 +26,12 @@ public final class Main {
         server.start();
         log.info("MyGame 서버가 포트 {}에서 시작되었습니다.", port);
 
-        // Graceful shutdown: Ctrl+C 시 안전하게 종료
+        // Graceful shutdown: Ctrl+C 시 안전하게 종료. 마지막 자동 저장도 강제 실행해
+        // 종료 직전 진행도(주로 인벤토리·HP/MP) 분실을 줄인다.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("서버 종료 신호 수신. 정리 중...");
             try {
+                server.shutdownPersistence();
                 server.stop(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
