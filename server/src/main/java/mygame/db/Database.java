@@ -84,6 +84,15 @@ public final class Database implements AutoCloseable {
             st.execute("""
                 ALTER TABLE players ADD COLUMN IF NOT EXISTS meso BIGINT NOT NULL DEFAULT 0
             """);
+            // HP/MP 영속화. -1 = sentinel ("최대치로 채워서 시작"). 신규 캐릭터/기존 행 모두
+            // 첫 로드 시 effectiveStats().maxHp/maxMp 로 채워진다. 사망 후 재접속 등
+            // 의도적으로 낮은 값을 저장하고 싶을 때만 0~maxHp 범위 값을 쓴다.
+            st.execute("""
+                ALTER TABLE players ADD COLUMN IF NOT EXISTS hp INT NOT NULL DEFAULT -1
+            """);
+            st.execute("""
+                ALTER TABLE players ADD COLUMN IF NOT EXISTS mp INT NOT NULL DEFAULT -1
+            """);
             log.info("DB 마이그레이션 완료.");
         } catch (SQLException e) {
             throw new RuntimeException("DB 마이그레이션 실패", e);

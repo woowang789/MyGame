@@ -26,7 +26,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
 
     @Override
     public Optional<PlayerData> findByName(String name) {
-        String sql = "SELECT id, name, level, exp, meso FROM players WHERE name = ?";
+        String sql = "SELECT id, name, level, exp, meso, hp, mp FROM players WHERE name = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, name);
@@ -38,7 +38,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
 
     @Override
     public Optional<PlayerData> findByAccountId(long accountId) {
-        String sql = "SELECT id, name, level, exp, meso FROM players WHERE account_id = ?";
+        String sql = "SELECT id, name, level, exp, meso, hp, mp FROM players WHERE account_id = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, accountId);
@@ -56,6 +56,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
                     id, rs.getString("name"),
                     rs.getInt("level"), rs.getInt("exp"),
                     rs.getLong("meso"),
+                    rs.getInt("hp"), rs.getInt("mp"),
                     loadItems(conn, id),
                     loadEquipment(conn, id)));
         }
@@ -63,6 +64,7 @@ public final class JdbcPlayerRepository implements PlayerRepository {
 
     @Override
     public PlayerData create(String name, long accountId) {
+        // hp/mp 는 DEFAULT -1 (sentinel) 로 들어가 첫 로드 시 풀피로 채워진다.
         String sql = "INSERT INTO players (name, level, exp, account_id) VALUES (?, 1, 0, ?)";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -72,7 +74,9 @@ public final class JdbcPlayerRepository implements PlayerRepository {
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (!keys.next()) throw new SQLException("INSERT 후 id 조회 실패");
                 long id = keys.getLong(1);
-                return new PlayerData(id, name, 1, 0, 0L, Map.of(), Map.of());
+                return new PlayerData(id, name, 1, 0, 0L,
+                        HP_MP_RESTORE_FULL, HP_MP_RESTORE_FULL,
+                        Map.of(), Map.of());
             }
         } catch (SQLException e) {
             throw new RuntimeException("create 실패: " + name, e);
@@ -80,17 +84,22 @@ public final class JdbcPlayerRepository implements PlayerRepository {
     }
 
     @Override
-    public void save(long id, int level, int exp, long meso,
+    public void save(long id, int level, int exp, long meso, int hp, int mp,
                      Map<String, Integer> items, Map<String, String> equipment) {
+        // 음수는 sentinel 로 보존(다음 로드 시 풀피 복원). 0 이상은 그대로 저장.
+        int hpToStore = hp < 0 ? HP_MP_RESTORE_FULL : hp;
+        int mpToStore = mp < 0 ? HP_MP_RESTORE_FULL : mp;
         try (Connection conn = db.getConnection()) {
             conn.setAutoCommit(false);
             try {
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "UPDATE players SET level=?, exp=?, meso=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")) {
+                        "UPDATE players SET level=?, exp=?, meso=?, hp=?, mp=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")) {
                     ps.setInt(1, level);
                     ps.setInt(2, exp);
                     ps.setLong(3, Math.max(0, meso));
-                    ps.setLong(4, id);
+                    ps.setInt(4, hpToStore);
+                    ps.setInt(5, mpToStore);
+                    ps.setLong(6, id);
                     ps.executeUpdate();
                 }
                 try (PreparedStatement del = conn.prepareStatement(
