@@ -89,6 +89,12 @@ public final class GameServer extends WebSocketServer {
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
+    /**
+     * 자동 저장 주기(초). 서버 크래시 시 마지막 한 사이클 분량만 잃도록.
+     * 너무 짧으면 DB I/O 비용, 너무 길면 분실량 증가. 30~60s 가 무난.
+     */
+    private static final long AUTOSAVE_INTERVAL_SECONDS = 30;
+    private final PeriodicSaver periodicSaver;
 
     public GameServer(int port) {
         super(new InetSocketAddress(port));
@@ -103,6 +109,9 @@ public final class GameServer extends WebSocketServer {
         this.accountRepo = new JdbcAccountRepository(database);
         this.auth = new AuthSessions(new AuthService(accountRepo), json);
         world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
+        this.periodicSaver = new PeriodicSaver(playerRepo,
+                () -> java.util.List.copyOf(sessionPlayers.values()),
+                AUTOSAVE_INTERVAL_SECONDS);
         registerHandlers();
     }
 
@@ -209,6 +218,20 @@ public final class GameServer extends WebSocketServer {
         log.info("WebSocket 서버 리스닝 시작.");
         setConnectionLostTimeout(60);
         gameLoop.start();
+        periodicSaver.start();
+    }
+
+    /**
+     * 서버 정상 종료 직전에 호출. 현재 접속 중인 모든 플레이어 상태를 한 번 더 강제 저장하고
+     * 자동 저장 스케줄러를 멈춘다. JVM shutdown hook 또는 테스트에서 직접 호출.
+     */
+    public void shutdownPersistence() {
+        try {
+            periodicSaver.saveAll();
+        } catch (Exception e) {
+            log.error("종료 직전 저장 실패", e);
+        }
+        periodicSaver.shutdown();
     }
 
     // --- 세션 수명 주기 핸들러 ---
