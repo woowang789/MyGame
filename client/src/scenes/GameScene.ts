@@ -207,6 +207,7 @@ export class GameScene extends Phaser.Scene {
     this.network.on('PLAYER_DAMAGED', (p) => this.onPlayerDamaged(p));
     this.network.on('PLAYER_DIED', (p) => this.onPlayerDied(p));
     this.network.on('PLAYER_RESPAWN', (p) => this.onPlayerRespawn(p));
+    this.network.on('PLAYER_CORRECT', (p) => this.onPlayerCorrect(p));
     this.network.on('ERROR', (p) => {
       const msg = String(p.message ?? '');
       console.warn('[Server ERROR]', msg);
@@ -474,6 +475,20 @@ export class GameScene extends Phaser.Scene {
         r.setTarget(x, y);
       }
     }
+  }
+
+  /**
+   * 서버 권위 좌표 보정. 클라가 보낸 MOVE 좌표가 서버 검증을 통과하지 못하면
+   * 서버는 이전 좌표를 그대로 반환한다. 클라는 즉시 자신의 스프라이트를 재배치하고
+   * 누적된 속도를 0 으로 폐기해 다음 입력부터 다시 시작한다.
+   */
+  private onPlayerCorrect(p: Packet): void {
+    const x = p.x as number;
+    const y = p.y as number;
+    const reason = p.reason as string | undefined;
+    console.warn('[PLAYER_CORRECT] 서버 좌표로 보정', { x, y, reason });
+    this.player.setVelocity(0, 0);
+    this.player.setPosition(x, y);
   }
 
   private onSkillUsed(p: Packet): void {

@@ -40,6 +40,8 @@ public final class Player {
     private volatile long meso = 0;
     /** 무적 시간 종료 시각(ms). 이 값보다 과거 시각 피격만 유효. */
     private volatile long invulnerableUntil = 0;
+    /** 마지막 MOVE 패킷을 검증·반영한 시각(ms). 0 이면 첫 이동 — 검증 스킵. */
+    private volatile long lastMoveAt = 0;
     private final Inventory inventory = new Inventory();
     private final Equipment equipment = new Equipment();
     /** 스킬 ID → 마지막 사용 시각(ms). 쿨다운 판정. 접근은 한 플레이어 스레드에서만. */
@@ -129,6 +131,17 @@ public final class Player {
     }
 
     /**
+     * DB 복원 시 사용. 저장된 값이 음수(sentinel) 거나 현재 maxHp 초과면 max 로 클램프.
+     * 0 도 그대로 허용 — "사망 상태 저장" 시나리오를 위해. 호출자가 부활/스폰 처리 책임.
+     */
+    public synchronized void restoreHpMp(int savedHp, int savedMp) {
+        int maxHp = effectiveStats().maxHp();
+        int maxMp = effectiveStats().maxMp();
+        this.hp = (savedHp < 0 || savedHp > maxHp) ? maxHp : savedHp;
+        this.mp = (savedMp < 0 || savedMp > maxMp) ? maxMp : savedMp;
+    }
+
+    /**
      * 몬스터 접촉 등으로 피해를 받는다.
      *
      * @return 실제 적용된 피해량. 무적/사망 상태면 0.
@@ -212,12 +225,24 @@ public final class Player {
         else if (vx < -0.5) this.facing = "left";
     }
 
+    /** MOVE 패킷 검증 시점을 갱신. 다음 패킷의 dt 계산 기준. */
+    public void markMoved(long now) {
+        this.lastMoveAt = now;
+    }
+
+    /** 직전 검증 이후 경과 시각(ms). 0 이면 첫 이동. */
+    public long lastMoveAt() {
+        return lastMoveAt;
+    }
+
     public void moveTo(String mapId, double x, double y) {
         this.mapId = mapId;
         this.x = x;
         this.y = y;
         this.vx = 0;
         this.vy = 0;
+        // 맵 이동/리스폰 직후 첫 MOVE 는 큰 좌표 점프가 정상이므로 검증 스킵.
+        this.lastMoveAt = 0;
     }
 
     public PlayerState toState() {

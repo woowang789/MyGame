@@ -16,6 +16,7 @@ import mygame.db.PlayerRepository.PlayerData;
 import mygame.game.CombatService;
 import mygame.game.GameLoop;
 import mygame.game.GameMap;
+import mygame.game.MovementValidator;
 import mygame.game.ProgressionSystem;
 import mygame.game.World;
 import mygame.game.entity.Monster;
@@ -39,6 +40,7 @@ import mygame.network.packets.Packets.MetaPacket;
 import mygame.network.packets.Packets.SkillMetaEntry;
 import mygame.network.packets.Packets.MonsterState;
 import mygame.network.packets.Packets.MoveRequest;
+import mygame.network.packets.Packets.PlayerCorrectedPacket;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
 import mygame.network.packets.Packets.PlayerLeftPacket;
 import mygame.network.packets.Packets.PlayerMovedPacket;
@@ -175,9 +177,12 @@ public final class GameServer extends WebSocketServer {
                         player.level(),
                         player.exp(),
                         player.meso(),
+                        player.hp(),
+                        player.mp(),
                         player.inventory().snapshot(),
                         SessionNotifier.equipmentSnapshotAsStringMap(player));
-                log.info("플레이어 저장: name={}, lv={}, exp={}", player.name(), player.level(), player.exp());
+                log.info("플레이어 저장: name={}, lv={}, exp={}, hp={}, mp={}",
+                        player.name(), player.level(), player.exp(), player.hp(), player.mp());
             } catch (Exception e) {
                 log.error("플레이어 저장 실패: name={}", player.name(), e);
             }
@@ -248,9 +253,15 @@ public final class GameServer extends WebSocketServer {
         data.items().forEach(player.inventory()::add);
         // 장비 복원: 슬롯별로 equip() 호출(원래 로직과 동일한 경로를 타게 해 불일치 제거).
         data.equipment().forEach((slotName, itemId) -> player.equipment().equip(itemId));
-        // HP/MP 는 세션 시작 시 최대로 충전. (HP/MP 영속화는 이후 Phase 에서.)
-        player.fullHealHp();
-        player.fullHealMp();
+        // HP/MP 영속화: 저장값이 음수(sentinel) 면 풀피로, 정상 범위면 그대로 복원.
+        // 장비 복원이 끝난 뒤 호출해야 maxHp 가 올바르게 산출된다.
+        player.restoreHpMp(data.hp(), data.mp());
+        // 사망 상태로 저장된 채 재접속한 경우: 즉시 부활 처리(스폰 지점으로 + 풀피).
+        // 로비/사망 UI 가 없으므로 가장 단순한 정책. 정교화는 후속 Phase 에서.
+        if (player.isDead()) {
+            player.fullHealHp();
+            player.fullHealMp();
+        }
 
         sessionPlayers.put(ctx.conn(), player);
         map.addPlayer(player);
@@ -288,7 +299,23 @@ public final class GameServer extends WebSocketServer {
         // 사망 중에는 위치 변경 불가. 부활 패킷이 권위적으로 스폰 지점에 세울 때까지 고정.
         if (player.isDead()) return;
         MoveRequest req = ctx.json().treeToValue(ctx.body(), MoveRequest.class);
+
+        // 서버 권위 검증: 직전 좌표 + 경과 시간으로 물리적 가능 범위 안인지 확인.
+        long now = System.currentTimeMillis();
+        MovementValidator.Result vr = MovementValidator.validate(
+                player.x(), player.y(), req.x(), req.y(),
+                player.lastMoveAt(), now);
+        if (!vr.accepted()) {
+            // 클라 좌표 채택을 거부하고 서버 좌표로 강제 보정. 다른 클라에 브로드캐스트하지 않는다.
+            log.warn("MOVE 검증 실패 player={} reason={}", player.name(), vr.reason());
+            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "PLAYER_CORRECT",
+                    new PlayerCorrectedPacket(player.x(), player.y(), vr.reason())));
+            // lastMoveAt 은 갱신하지 않는다 — 다음 정상 패킷이 큰 dt 이점을 누리지 않도록.
+            return;
+        }
+
         player.updatePosition(req.x(), req.y(), req.vx(), req.vy());
+        player.markMoved(now);
 
         GameMap map = world.map(player.mapId());
         if (map == null) return;

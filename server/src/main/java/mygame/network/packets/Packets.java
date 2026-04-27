@@ -184,4 +184,11 @@ public final class Packets {
      * 본인에게는 HP/MP 가 찬 상태로 STATS 도 별도 송신한다.
      */
     public record PlayerRespawnedPacket(int playerId, String mapId, double x, double y, int hp) {}
+
+    /**
+     * 서버 권위 좌표 보정. MOVE 패킷의 좌표가 검증을 통과하지 못했을 때
+     * 본인에게만 송신된다. 클라는 이 좌표로 자신의 스프라이트를 즉시 재배치하고
+     * 누적된 입력 예측을 폐기해야 한다.
+     */
+    public record PlayerCorrectedPacket(double x, double y, String reason) {}
 }
