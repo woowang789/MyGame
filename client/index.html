@@ -522,6 +522,95 @@
         font-variant-numeric: tabular-nums;
       }
 
+      /*
+       * 스탯창: S 키로 토글. Decorator 체인의 각 레이어를 시각화한다.
+       * 베이스(레벨 기반) · 장비(보너스 합) · 합계(=effectiveStats) 3열을 분리 표시해
+       * 장비 효과를 한눈에 비교할 수 있다.
+       */
+      #stat-window {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 320px;
+        background: rgba(16, 18, 28, 0.92);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+        font-size: 12px;
+        z-index: 50;
+      }
+      #stat-window.hidden { display: none; }
+      #stat-window .header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        user-select: none;
+      }
+      #stat-window .header .title {
+        font-weight: 700;
+        color: #ffeb8a;
+        letter-spacing: 0.4px;
+        flex-shrink: 0;
+      }
+      #stat-window .header .hint {
+        flex: 1;
+        font-size: 10px;
+        color: #7a7a88;
+        text-align: right;
+      }
+      #stat-window .close-btn {
+        background: transparent;
+        color: #aaa;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        width: 22px;
+        height: 22px;
+        line-height: 1;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #stat-window .close-btn:hover {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+      #stat-window .body {
+        padding: 12px 14px;
+      }
+      #stat-window table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      #stat-window th {
+        font-size: 10px;
+        font-weight: 600;
+        text-align: right;
+        color: #8a8a96;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        padding: 4px 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      #stat-window th:first-child { text-align: left; color: #cfcfd6; }
+      #stat-window td {
+        padding: 6px 8px;
+        text-align: right;
+        font-size: 13px;
+      }
+      #stat-window td:first-child {
+        text-align: left;
+        color: #cfcfd6;
+        font-weight: 600;
+      }
+      #stat-window td.col-base { color: #cfcfd6; }
+      #stat-window td.col-equip { color: #aee1ff; }
+      #stat-window td.col-total { color: #ffeb8a; font-weight: 700; }
+      #stat-window tr + tr td { border-top: 1px dashed rgba(255, 255, 255, 0.05); }
+
       /* 사망 오버레이 */
       #death-overlay {
         position: fixed;
@@ -576,7 +665,7 @@
       </div>
     </div>
 
-    <div id="hud">방향키 이동 · ↑ 점프/포털 · Space 공격 · I 인벤 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
+    <div id="hud">방향키 이동 · ↑ 점프/포털 · Space 공격 · I 인벤 · S 스탯 · Enter 채팅 · /w 이름 내용 · Q 장비착용 E 해제</div>
     <div id="game-root"></div>
 
     <!-- 픽업 로그(좌하단): 경험치/메소/아이템 획득 알림. 채팅과 분리. -->
@@ -604,6 +693,56 @@
       </div>
       <div class="body">
         <div id="inv-grid" class="inv-grid"></div>
+      </div>
+    </div>
+
+    <!--
+      스탯창(플로팅). S 키로 토글, Esc/X 로 닫기.
+      Decorator 체인의 각 레이어를 보이게 하기 위해 베이스 / 장비 / 합계 3열을 분리 표시한다.
+    -->
+    <div id="stat-window" class="hidden">
+      <div class="header">
+        <span class="title">스탯</span>
+        <span class="hint">S 토글 · Esc 닫기</span>
+        <button id="stat-close" class="close-btn" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="body">
+        <table>
+          <thead>
+            <tr>
+              <th>스탯</th>
+              <th>베이스</th>
+              <th>장비</th>
+              <th>합계</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>ATK</td>
+              <td class="col-base" id="st-attack-base">0</td>
+              <td class="col-equip" id="st-attack-equip">+0</td>
+              <td class="col-total" id="st-attack-total">0</td>
+            </tr>
+            <tr>
+              <td>MAXHP</td>
+              <td class="col-base" id="st-hp-base">0</td>
+              <td class="col-equip" id="st-hp-equip">+0</td>
+              <td class="col-total" id="st-hp-total">0</td>
+            </tr>
+            <tr>
+              <td>MAXMP</td>
+              <td class="col-base" id="st-mp-base">0</td>
+              <td class="col-equip" id="st-mp-equip">+0</td>
+              <td class="col-total" id="st-mp-total">0</td>
+            </tr>
+            <tr>
+              <td>SPD</td>
+              <td class="col-base" id="st-spd-base">0</td>
+              <td class="col-equip" id="st-spd-equip">+0</td>
+              <td class="col-total" id="st-spd-total">0</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -637,6 +776,8 @@
         <div class="slot"><span class="name">무기</span><span class="val" id="eq-weapon">-</span></div>
         <div class="slot"><span class="name">모자</span><span class="val" id="eq-hat">-</span></div>
         <div class="slot"><span class="name">갑옷</span><span class="val" id="eq-armor">-</span></div>
+        <div class="slot"><span class="name">장갑</span><span class="val" id="eq-gloves">-</span></div>
+        <div class="slot"><span class="name">신발</span><span class="val" id="eq-shoes">-</span></div>
         <div class="stats-line" id="eq-stats">ATK 0 · MAXHP 0</div>
         <div class="meso" id="meso-text">0 메소</div>
         <div class="hint">슬롯 더블클릭 해제 · Q 첫 장비 착용 · E 전부 해제</div>

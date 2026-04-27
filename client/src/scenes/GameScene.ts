@@ -59,6 +59,7 @@ export class GameScene extends Phaser.Scene {
   private equipKey!: Phaser.Input.Keyboard.Key;
   private unequipKey!: Phaser.Input.Keyboard.Key;
   private inventoryKey!: Phaser.Input.Keyboard.Key;
+  private statKey!: Phaser.Input.Keyboard.Key;
   private escKey!: Phaser.Input.Keyboard.Key;
   private skillKeys!: Record<string, Phaser.Input.Keyboard.Key>;
   private myLabel!: Phaser.GameObjects.Text;
@@ -134,6 +135,7 @@ export class GameScene extends Phaser.Scene {
     this.equipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.unequipKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.inventoryKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.statKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.skillKeys = {
       power_strike: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
@@ -146,6 +148,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.setAccountKey(this.playerName);
     this.chat.setup();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
+    document.getElementById('stat-close')?.addEventListener('click', () => this.hud.closeStat());
     this.hud.bindInventoryInteractions();
     // 인벤/장비 슬롯의 더블클릭 → 서버 패킷으로 위임.
     this.hud.onInventoryAction((action) => {
@@ -387,8 +390,13 @@ export class GameScene extends Phaser.Scene {
       attack: p.attack as number,
       maxHp: p.maxHp as number,
       maxMp: p.maxMp as number,
+      speed: p.speed as number,
       currentHp: p.currentHp as number,
-      currentMp: p.currentMp as number
+      currentMp: p.currentMp as number,
+      baseAttack: p.baseAttack as number,
+      baseMaxHp: p.baseMaxHp as number,
+      baseMaxMp: p.baseMaxMp as number,
+      baseSpeed: p.baseSpeed as number
     });
   }
 
@@ -565,12 +573,16 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // I: 인벤토리 창 토글. Esc: 열려 있으면 닫기.
+    // I: 인벤토리 창 토글. S: 스탯창 토글. Esc: 열려 있는 패널을 닫기.
     if (Phaser.Input.Keyboard.JustDown(this.inventoryKey)) {
       this.hud.toggleInventory();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.escKey) && this.hud.isInventoryOpen()) {
-      this.hud.closeInventory();
+    if (Phaser.Input.Keyboard.JustDown(this.statKey)) {
+      this.hud.toggleStat();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
+      if (this.hud.isInventoryOpen()) this.hud.closeInventory();
+      if (this.hud.isStatOpen()) this.hud.closeStat();
     }
   }
 

@@ -171,6 +171,14 @@ public final class Player {
         return equipment.decorate(new BaseStats(level)).stats();
     }
 
+    /**
+     * 장비를 모두 벗은 상태의 레벨 기본 스탯. 게임 로직은 {@link #effectiveStats()} 만
+     * 쓰고, 본 메서드는 스탯창 UI 의 "베이스 vs 장비 보너스" 분리 표시 용도다.
+     */
+    public Stats baseStats() {
+        return new BaseStats(level).stats();
+    }
+
     /** 현 레벨 기준 다음 레벨까지 필요한 누적 EXP. 간단 선형식. */
     public int expToNextLevel() {
         return 50 * level;

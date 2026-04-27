@@ -55,7 +55,9 @@ public final class MonsterRegistry {
                         new Entry("red_potion", 0.55),
                         new Entry("snail_shell", 0.25),
                         new Entry("iron_sword", 0.04),
-                        new Entry("cloth_armor", 0.05)
+                        new Entry("cloth_armor", 0.05),
+                        new Entry("work_gloves", 0.05),
+                        new Entry("running_shoes", 0.04)
                 ),
                 0xff6a5a));
 

@@ -35,8 +35,12 @@ public final class SessionNotifier {
     /** 최종 스탯 + 현재 HP/MP 를 본인에게 전달. 스킬 사용·장비 변경·피격 시 모두 호출. */
     public void sendStats(Player player) {
         Stats s = player.effectiveStats();
+        Stats b = player.baseStats();
         player.connection().send(PacketEnvelope.wrap(json, "STATS",
-                new StatsPacket(s.maxHp(), s.maxMp(), s.attack(), s.speed(), player.hp(), player.mp())));
+                new StatsPacket(
+                        s.maxHp(), s.maxMp(), s.attack(), s.speed(),
+                        player.hp(), player.mp(),
+                        b.maxHp(), b.maxMp(), b.attack(), b.speed())));
     }
 
     /** 본인에게 장비 스냅샷과 최종 스탯을 함께 전달. 공격 피해량 등 UI 에 영향. */

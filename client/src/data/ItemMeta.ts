@@ -80,6 +80,22 @@ export const ITEM_META: Record<string, ItemMeta> = {
     description: '가벼운 천 갑옷.',
     bonus: { maxHp: 25 }
   },
+  work_gloves: {
+    id: 'work_gloves',
+    name: '작업 장갑',
+    color: 0x7d5b3a,
+    type: 'EQUIPMENT',
+    description: '손에 끼면 한결 든든한 장갑.',
+    bonus: { attack: 4 }
+  },
+  running_shoes: {
+    id: 'running_shoes',
+    name: '달리기 신발',
+    color: 0x4caf50,
+    type: 'EQUIPMENT',
+    description: '발이 한층 가벼워진다.',
+    bonus: { speed: 30 }
+  },
   meso: {
     id: 'meso',
     name: '메소',

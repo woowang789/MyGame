@@ -74,14 +74,34 @@ export class HudView {
     attack: number;
     maxHp: number;
     maxMp: number;
+    speed: number;
     currentHp: number;
     currentMp: number;
+    baseAttack: number;
+    baseMaxHp: number;
+    baseMaxMp: number;
+    baseSpeed: number;
   }): void {
     this.setText('eq-stats', `ATK ${stats.attack} · MAXHP ${stats.maxHp}`);
     this.setText('hp-text', `${stats.currentHp} / ${stats.maxHp}`);
     this.setWidthPct('hp-bar-fill', stats.maxHp > 0 ? (100 * stats.currentHp) / stats.maxHp : 0);
     this.setText('mp-text', `${stats.currentMp} / ${stats.maxMp}`);
     this.setWidthPct('mp-bar-fill', stats.maxMp > 0 ? (100 * stats.currentMp) / stats.maxMp : 0);
+    // 스탯창: 베이스 · 장비 · 합계 3열을 표 형태로. 장비 = 합계 - 베이스(SSoT 는 서버).
+    const renderRow = (
+      key: 'attack' | 'hp' | 'mp' | 'spd',
+      base: number,
+      total: number
+    ): void => {
+      const equip = total - base;
+      this.setText(`st-${key}-base`, String(base));
+      this.setText(`st-${key}-equip`, equip > 0 ? `+${equip}` : equip < 0 ? String(equip) : '+0');
+      this.setText(`st-${key}-total`, String(total));
+    };
+    renderRow('attack', stats.baseAttack, stats.attack);
+    renderRow('hp', stats.baseMaxHp, stats.maxHp);
+    renderRow('mp', stats.baseMaxMp, stats.maxMp);
+    renderRow('spd', stats.baseSpeed, stats.speed);
   }
 
   /** 피격 시 STATS 패킷 지연 대비. HP 숫자/바만 즉시 반영. */
@@ -299,6 +319,8 @@ export class HudView {
     bindEquipUnequip('eq-weapon', 'WEAPON');
     bindEquipUnequip('eq-hat', 'HAT');
     bindEquipUnequip('eq-armor', 'ARMOR');
+    bindEquipUnequip('eq-gloves', 'GLOVES');
+    bindEquipUnequip('eq-shoes', 'SHOES');
   }
 
   /**
@@ -351,6 +373,19 @@ export class HudView {
   private setInventoryHidden(hidden: boolean): void {
     document.getElementById('inventory-window')?.classList.toggle('hidden', hidden);
     if (hidden) document.getElementById('item-tooltip')?.classList.add('hidden');
+  }
+
+  /** 스탯창 토글/닫기. 인벤토리와 동일한 토글 패턴 — 채팅 포커스 중 입력은 GameScene 측에서 차단. */
+  toggleStat(): void {
+    const el = document.getElementById('stat-window');
+    if (!el) return;
+    el.classList.toggle('hidden');
+  }
+  closeStat(): void {
+    document.getElementById('stat-window')?.classList.add('hidden');
+  }
+  isStatOpen(): boolean {
+    return document.getElementById('stat-window')?.classList.contains('hidden') === false;
   }
 
   /**
@@ -457,6 +492,8 @@ export class HudView {
     render('eq-weapon', 'WEAPON');
     render('eq-hat', 'HAT');
     render('eq-armor', 'ARMOR');
+    render('eq-gloves', 'GLOVES');
+    render('eq-shoes', 'SHOES');
   }
 
   updateSkillCooldowns(now: number, cooldownUntil: Map<string, number>): void {

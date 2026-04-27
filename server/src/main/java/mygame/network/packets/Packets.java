@@ -148,8 +148,17 @@ public final class Packets {
      */
     public record EquipmentPacket(int playerId, java.util.Map<String, String> slots) {}
 
-    /** 최종 스탯(장비 포함) 알림. 본인에게만 전송. 현재 hp/mp 포함. */
-    public record StatsPacket(int maxHp, int maxMp, int attack, int speed, int currentHp, int currentMp) {}
+    /**
+     * 최종 스탯(장비 포함) 알림. 본인에게만 전송. 현재 hp/mp 포함.
+     *
+     * <p>base* 필드는 장비를 모두 벗었을 때의 레벨 기반 스탯이다. 클라 스탯창이
+     * 베이스 / 장비(=합계 - 베이스) / 합계 3단을 분리 표시하기 위해 함께 내려보낸다.
+     * 서버가 단일 진실 원천(SSoT). 클라가 공식을 다시 계산하지 않는다.
+     */
+    public record StatsPacket(
+            int maxHp, int maxMp, int attack, int speed,
+            int currentHp, int currentMp,
+            int baseMaxHp, int baseMaxMp, int baseAttack, int baseSpeed) {}
 
     // Phase M — 스킬
 
