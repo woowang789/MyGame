@@ -103,6 +103,12 @@ export class GameScene extends Phaser.Scene {
   private readonly effects: EffectFactory;
   private readonly chat: ChatController;
   private readonly inputRouter: InputRouter;
+  /**
+   * 직전 frame 의 input 포커스 여부. 같은 ESC keydown 이 input blur 와 상점 닫기를
+   * 동시에 트리거하지 않도록 "ESC 가 입력창에서 빠져나가는 frame" 한 박자를
+   * 흡수하는 용도. true 였던 다음 frame 의 ESC 는 closeShop 으로 전달하지 않는다.
+   */
+  private prevInputFocused = false;
   private readonly pickupLog = new PickupLog();
   /** 인벤 증가분 계산용 마지막 스냅샷. onInventory 가 새 값 수신 시 diff 해서 알림을 쏜다. */
   private lastInventorySnapshot: Record<string, number> = {};
@@ -312,6 +318,14 @@ export class GameScene extends Phaser.Scene {
     // 자기 캐릭터가 화면 밖에 머무는 문제를 방지한다.
     this.cameras.main.centerOn(x, y);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+
+    // 맵 전환 직전 누르고 있던 방향키가 새 맵에서 그대로 이동 명령으로 흘러
+    // 스폰 지점에서 멈추지 않고 맵 끝까지 달려가는 문제 방지.
+    // 사용자가 키를 한 번 떼었다 다시 눌러야 이동이 재개된다.
+    this.cursors.left.reset();
+    this.cursors.right.reset();
+    this.cursors.up.reset();
+    this.cursors.down.reset();
 
     for (const o of others) this.spawnRemote(o);
     const ms = (p.monsters ?? []) as MonsterStateMsg[];
@@ -618,11 +632,14 @@ export class GameScene extends Phaser.Scene {
     const inputFocused = this.inputRouter.isAnyInputFocused();
     const shopOpen = this.hud.isShopOpen();
 
-    // 상점이 열려 있고 input 포커스는 없을 때 ESC 로 닫기는 게임 가드 진입 전에 처리.
-    // input 포커스가 있으면 ESC 는 input 의 blur 로 가도록 양보한다.
-    if (shopOpen && !inputFocused && Phaser.Input.Keyboard.JustDown(this.escKey)) {
+    // 상점이 열려 있고 input 포커스가 (이번 frame · 직전 frame 모두) 없을 때만
+    // ESC 로 상점 닫기. 한 번의 ESC 가 input blur 와 closeShop 을 동시에 트리거
+    // 하지 않도록 직전 frame 의 포커스 상태(prevInputFocused) 도 함께 검사.
+    if (shopOpen && !inputFocused && !this.prevInputFocused
+        && Phaser.Input.Keyboard.JustDown(this.escKey)) {
       this.closeShop();
     }
+    this.prevInputFocused = inputFocused;
 
     // 다음 중 하나라도 참이면 게임 입력을 전부 건너뛴다 — 좌우 속도도 잠가 잔류 이동 차단.
     //  - 텍스트 입력(채팅·상점 수량 등) 포커스 중
