@@ -1,5 +1,7 @@
 package mygame.game;
 
+import java.util.concurrent.ThreadLocalRandom;
+import mygame.game.ai.ChaseState;
 import mygame.game.entity.Monster;
 import mygame.game.entity.Player;
 import mygame.game.event.EventBus;
@@ -7,6 +9,7 @@ import mygame.game.event.GameEvent.MonsterKilled;
 import mygame.game.item.DroppedItem;
 import mygame.network.packets.Packets.MonsterDamagedPacket;
 import mygame.network.packets.Packets.MonsterDiedPacket;
+import mygame.network.packets.Packets.MonsterMovedPacket;
 
 /**
  * 몬스터 피격·사망 처리 일원화.
@@ -50,12 +53,10 @@ public final class CombatService {
             double dir = target.x() >= attacker.x() ? 1 : -1;
             target.applyKnockback(dir * MONSTER_KNOCKBACK_SPEED, MONSTER_KNOCKBACK_MS);
             // 넉백 이후에는 공격자를 추격. 배회 구간 밖으로 나가지는 않는다.
-            target.setPostKnockbackState(new mygame.game.ai.ChaseState(
-                    attacker, map.id(), MONSTER_AGGRO_MS));
+            target.setPostKnockbackState(new ChaseState(attacker, map.id(), MONSTER_AGGRO_MS));
             // 이동 브로드캐스트로 클라가 즉시 보간을 시작하도록 최신 상태를 전달.
             map.broadcast("MONSTER_MOVE",
-                    new mygame.network.packets.Packets.MonsterMovedPacket(
-                            target.id(), target.x(), target.vx()));
+                    new MonsterMovedPacket(target.id(), target.x(), target.vx()));
         }
         return applied;
     }
@@ -84,7 +85,7 @@ public final class CombatService {
         }
         // 메소 드롭: [mesoMin, mesoMax] 균등 분포. 0 이면 생략.
         if (origin.mesoMax() > 0 && origin.mesoMax() >= origin.mesoMin()) {
-            int amount = java.util.concurrent.ThreadLocalRandom.current()
+            int amount = ThreadLocalRandom.current()
                     .nextInt(origin.mesoMin(), origin.mesoMax() + 1);
             if (amount > 0) {
                 double dropX = target.x() + (scatter - 1) * DROP_SCATTER_STEP;
