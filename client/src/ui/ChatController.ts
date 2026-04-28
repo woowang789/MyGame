@@ -1,4 +1,3 @@
-import Phaser from 'phaser';
 import type { WebSocketClient } from '../network/WebSocketClient';
 
 /**
@@ -6,12 +5,14 @@ import type { WebSocketClient } from '../network/WebSocketClient';
  *
  * Phaser Scene 과 독립된 DOM 레이어라 Scene 에서 떼어내 단일 책임으로 다룬다.
  * 입력창 포커스 여부는 Scene 의 update() 루프가 질의하므로 public 메서드로 노출.
+ *
+ * <p>Phaser 키 캡처 on/off 는 {@link InputRouter} 가 글로벌로 처리한다 — 본 클래스는
+ * 채팅 박스의 시각 효과만 책임진다.
  */
 export class ChatController {
   private ghostTimer: number | null = null;
 
   constructor(
-    private readonly scene: Phaser.Scene,
     private readonly network: WebSocketClient
   ) {}
 
@@ -45,17 +46,15 @@ export class ChatController {
       }
     });
 
-    // 포커스 중에는 Phaser 키 캡처 비활성 — Q/E 등이 텍스트에 섞이지 않도록.
+    // Phaser 키 캡처 on/off 는 글로벌 InputRouter 가 일괄 처리한다 — 여기서는
+    // 채팅 박스의 시각 효과(확장 / ghost) 만 자기 책임으로 둔다.
     const box = document.getElementById('chat-box');
     input.addEventListener('focus', () => {
-      this.scene.input.keyboard?.disableGlobalCapture();
       box?.classList.add('expanded');
       box?.classList.remove('ghost');
       this.clearGhostTimer();
     });
     input.addEventListener('blur', () => {
-      this.scene.input.keyboard?.enableGlobalCapture();
-      this.scene.input.keyboard?.resetKeys();
       box?.classList.remove('expanded');
     });
   }
