@@ -34,13 +34,14 @@ public final class Packets {
 
     // S→C
 
-    /** 접속 완료 응답. 자기 자신의 정보와 맵에 이미 있던 다른 플레이어 · 몬스터 목록을 준다. */
+    /** 접속 완료 응답. 자기 자신의 정보와 맵에 이미 있던 다른 플레이어 · 몬스터 · NPC 목록을 준다. */
     public record WelcomePacket(
             int playerId,
             PlayerState self,
             java.util.List<PlayerState> others,
             java.util.List<MonsterState> monsters,
-            java.util.List<DroppedItemState> items
+            java.util.List<DroppedItemState> items,
+            java.util.List<NpcState> npcs
     ) {}
 
     /** 스킬 메타(클라 HUD · 쿨다운 예측용). */
@@ -79,7 +80,8 @@ public final class Packets {
             String mapId, double x, double y,
             java.util.List<PlayerState> others,
             java.util.List<MonsterState> monsters,
-            java.util.List<DroppedItemState> items
+            java.util.List<DroppedItemState> items,
+            java.util.List<NpcState> npcs
     ) {}
 
     /** 몬스터의 공개 상태. 스폰/스냅샷 시 클라이언트에게 전달된다. */
@@ -191,4 +193,25 @@ public final class Packets {
      * 누적된 입력 예측을 폐기해야 한다.
      */
     public record PlayerCorrectedPacket(double x, double y, String reason) {}
+
+    // Phase: NPC 상점
+
+    /** 맵 위 NPC 의 공개 상태. WELCOME/MAP_CHANGED 에 포함된다. */
+    public record NpcState(int id, String name, double x, double y, String shopId) {}
+
+    /** 클라가 NPC 상점을 열어달라고 요청. */
+    public record ShopOpenRequest(String shopId) {}
+
+    /** 상점 카탈로그 한 항목. */
+    public record ShopCatalogEntry(String itemId, long price, int stockPerTransaction) {}
+
+    /** 상점 열기 응답 — 본인에게만. 카탈로그 + 현재 보유 메소를 함께 전달. */
+    public record ShopOpenedPacket(String shopId, String npcName,
+                                   java.util.List<ShopCatalogEntry> items, long meso) {}
+
+    /** 클라가 N 개를 구매. */
+    public record ShopBuyRequest(String shopId, String itemId, int qty) {}
+
+    /** 구매 결과 — 본인에게만. ok=false 면 reason 에 사유. */
+    public record ShopResultPacket(boolean ok, String reason, long mesoAfter) {}
 }

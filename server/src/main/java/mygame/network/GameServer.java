@@ -20,6 +20,7 @@ import mygame.game.MovementValidator;
 import mygame.game.ProgressionSystem;
 import mygame.game.World;
 import mygame.game.entity.Monster;
+import mygame.game.entity.Npc;
 import mygame.game.entity.Player;
 import mygame.game.event.EventBus;
 import mygame.game.event.GameEvent;
@@ -40,6 +41,7 @@ import mygame.network.packets.Packets.MetaPacket;
 import mygame.network.packets.Packets.SkillMetaEntry;
 import mygame.network.packets.Packets.MonsterState;
 import mygame.network.packets.Packets.MoveRequest;
+import mygame.network.packets.Packets.NpcState;
 import mygame.network.packets.Packets.PlayerCorrectedPacket;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
 import mygame.network.packets.Packets.PlayerLeftPacket;
@@ -86,6 +88,7 @@ public final class GameServer extends WebSocketServer {
     private final ChatHandler chatHandler = new ChatHandler(world);
     private final InventoryHandler inventoryHandler = new InventoryHandler(world, json, notifier);
     private final CombatHandler combatHandler = new CombatHandler(world, combatService, notifier);
+    private final ShopHandler shopHandler = new ShopHandler(world);
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
@@ -130,6 +133,8 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("USE_ITEM", inventoryHandler::handleUseItem);
         dispatcher.register("DROP_ITEM", inventoryHandler::handleDropItem);
         dispatcher.register("CHAT", chatHandler::handle);
+        dispatcher.register("SHOP_OPEN", shopHandler::handleOpen);
+        dispatcher.register("SHOP_BUY", shopHandler::handleBuy);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -295,7 +300,8 @@ public final class GameServer extends WebSocketServer {
                 player.toState(),
                 map.othersOf(sessionId).stream().map(Player::toState).toList(),
                 map.monsters().stream().map(GameServer::toMonsterState).toList(),
-                map.droppedItems().stream().map(GameServer::toItemState).toList()
+                map.droppedItems().stream().map(GameServer::toItemState).toList(),
+                map.npcs().stream().map(GameServer::toNpcState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "WELCOME", welcome));
         // META: 정적 레지스트리(아이템·스킬) 를 단일 진실 원천으로 내려 보낸다.
@@ -384,7 +390,8 @@ public final class GameServer extends WebSocketServer {
                 player.y(),
                 target.othersOf(player.id()).stream().map(Player::toState).toList(),
                 target.monsters().stream().map(GameServer::toMonsterState).toList(),
-                target.droppedItems().stream().map(GameServer::toItemState).toList()
+                target.droppedItems().stream().map(GameServer::toItemState).toList(),
+                target.npcs().stream().map(GameServer::toNpcState).toList()
         );
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MAP_CHANGED", resp));
 
@@ -405,5 +412,9 @@ public final class GameServer extends WebSocketServer {
 
     private static DroppedItemState toItemState(DroppedItem d) {
         return new DroppedItemState(d.id(), d.templateId(), d.x(), d.y());
+    }
+
+    private static NpcState toNpcState(Npc n) {
+        return new NpcState(n.id(), n.name(), n.x(), n.y(), n.shopId());
     }
 }

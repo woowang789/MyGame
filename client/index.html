@@ -552,6 +552,107 @@
         cursor: move;
       }
       #stat-window.dragging { cursor: grabbing; }
+
+      /* ----- 상점 창 ----- */
+      #shop-window {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 360px;
+        background: #232331;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: #e7e7ec;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+        font-size: 12px;
+        z-index: 60;
+      }
+      #shop-window.hidden { display: none; }
+      #shop-window .header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        user-select: none;
+        cursor: move;
+      }
+      #shop-window.dragging { cursor: grabbing; }
+      #shop-window .header .title {
+        font-weight: 700;
+        color: #ffeb8a;
+        flex-shrink: 0;
+      }
+      #shop-window .header .hint {
+        flex: 1;
+        font-size: 10px;
+        color: #7a7a88;
+        text-align: right;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #shop-window .close-btn {
+        background: transparent;
+        color: #aaa;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        width: 22px;
+        height: 22px;
+        line-height: 1;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #shop-window .body { padding: 12px 14px; }
+      #shop-window .shop-meso {
+        text-align: right;
+        color: #ffeb8a;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      #shop-window .shop-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 320px;
+        overflow-y: auto;
+      }
+      #shop-window .shop-row {
+        display: grid;
+        grid-template-columns: 1fr 80px 60px 60px;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 4px;
+      }
+      #shop-window .shop-row .name { color: #e7e7ec; }
+      #shop-window .shop-row .price { color: #ffeb8a; text-align: right; font-variant-numeric: tabular-nums; }
+      #shop-window .shop-row input.qty {
+        background: #1a1a24;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+        padding: 3px 6px;
+        font-size: 12px;
+        width: 50px;
+        text-align: right;
+      }
+      #shop-window .shop-row button.buy {
+        background: #4a7d4a;
+        color: #fff;
+        border: none;
+        border-radius: 3px;
+        padding: 4px 8px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #shop-window .shop-row button.buy:hover { background: #5a9d5a; }
+      #shop-window .shop-row button.buy:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
       #stat-window .header .title {
         font-weight: 700;
         color: #ffeb8a;
@@ -676,6 +777,22 @@
     <div id="chat-box">
       <div id="chat-log"></div>
       <input id="chat-input" type="text" placeholder="Enter 로 채팅 · /w 닉네임 메시지 로 귓속말" maxlength="200" />
+    </div>
+
+    <!--
+      상점 창(플로팅). F 키로 NPC 와 대화 시 열림. Esc/X 로 닫기.
+      카탈로그는 HudView.openShop 이 동적 렌더한다.
+    -->
+    <div id="shop-window" class="hidden">
+      <div class="header">
+        <span class="title" id="shop-title">상점</span>
+        <span class="hint">행 더블클릭 또는 [구매] 클릭 · 수량 입력 가능</span>
+        <button id="shop-close" class="close-btn" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="body">
+        <div id="shop-meso" class="shop-meso">보유: 0 메소</div>
+        <div id="shop-list" class="shop-list"></div>
+      </div>
     </div>
 
     <!--
