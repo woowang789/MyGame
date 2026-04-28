@@ -135,6 +135,7 @@ public final class GameServer extends WebSocketServer {
         dispatcher.register("CHAT", chatHandler::handle);
         dispatcher.register("SHOP_OPEN", shopHandler::handleOpen);
         dispatcher.register("SHOP_BUY", shopHandler::handleBuy);
+        dispatcher.register("SHOP_SELL", shopHandler::handleSell);
 
         // EventBus 구독: 진행(ExpGained/LeveledUp) → 네트워크 알림.
         // ProgressionSystem 은 도메인 로직만, 송신은 여기서 분리 처리한다.
@@ -403,7 +404,7 @@ public final class GameServer extends WebSocketServer {
         var skills = SkillRegistry.all().stream()
                 .map(s -> new SkillMetaEntry(s.id(), s.name(), s.mpCost(), s.cooldownMs()))
                 .toList();
-        return new MetaPacket(ItemRegistry.equipmentIds(), skills);
+        return new MetaPacket(ItemRegistry.equipmentIds(), skills, ItemRegistry.sellPrices());
     }
 
     private static MonsterState toMonsterState(Monster m) {

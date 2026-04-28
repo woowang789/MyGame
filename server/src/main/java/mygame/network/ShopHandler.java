@@ -14,6 +14,7 @@ import mygame.network.packets.Packets.ShopCatalogEntry;
 import mygame.network.packets.Packets.ShopOpenRequest;
 import mygame.network.packets.Packets.ShopOpenedPacket;
 import mygame.network.packets.Packets.ShopResultPacket;
+import mygame.network.packets.Packets.ShopSellRequest;
 
 /**
  * NPC 상점 관련 패킷 핸들러.
@@ -84,6 +85,35 @@ public final class ShopHandler {
                         new ShopResultPacket(true, null, ok.mesoAfter())));
             }
             case ShopService.BuyResult.Failure f ->
+                    ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "SHOP_RESULT",
+                            new ShopResultPacket(false, f.reason(), player.meso())));
+        }
+    }
+
+    public void handleSell(PacketContext ctx) throws Exception {
+        Player player = ctx.player();
+        if (player == null) return;
+        ShopSellRequest req = ctx.json().treeToValue(ctx.body(), ShopSellRequest.class);
+
+        GameMap map = world.map(player.mapId());
+        if (map == null) {
+            ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "SHOP_RESULT",
+                    new ShopResultPacket(false, "맵 정보 없음", player.meso())));
+            return;
+        }
+
+        var result = ShopService.sell(map, player, req.shopId(), req.itemId(), req.qty());
+        switch (result) {
+            case ShopService.SellResult.Ok ok -> {
+                // 매입은 메소가 늘고 인벤이 줄어든다 — gained 양수로 송신.
+                ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "MESO",
+                        new MesoUpdatedPacket(player.meso(), ok.totalGained())));
+                ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "INVENTORY",
+                        new InventoryPacket(player.inventory().snapshot())));
+                ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "SHOP_RESULT",
+                        new ShopResultPacket(true, null, ok.mesoAfter())));
+            }
+            case ShopService.SellResult.Failure f ->
                     ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "SHOP_RESULT",
                             new ShopResultPacket(false, f.reason(), player.meso())));
         }

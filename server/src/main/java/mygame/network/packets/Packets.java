@@ -54,7 +54,9 @@ public final class Packets {
      */
     public record MetaPacket(
             java.util.List<String> equipmentIds,
-            java.util.List<SkillMetaEntry> skills
+            java.util.List<SkillMetaEntry> skills,
+            /** 매입가 맵(itemId → 메소). 0 또는 미수록 = 매입 불가. */
+            java.util.Map<String, Long> sellPrices
     ) {}
 
     /** 다른 플레이어가 맵에 들어왔음을 알리는 브로드캐스트. */
@@ -212,6 +214,9 @@ public final class Packets {
     /** 클라가 N 개를 구매. */
     public record ShopBuyRequest(String shopId, String itemId, int qty) {}
 
-    /** 구매 결과 — 본인에게만. ok=false 면 reason 에 사유. */
+    /** 클라가 인벤 아이템 N 개를 매입(판매)한다. ShopBuyRequest 와 대칭. */
+    public record ShopSellRequest(String shopId, String itemId, int qty) {}
+
+    /** 구매·매입 결과 — 본인에게만. ok=false 면 reason 에 사유. */
     public record ShopResultPacket(boolean ok, String reason, long mesoAfter) {}
 }

@@ -3,6 +3,8 @@ package mygame.game.shop;
 import mygame.game.GameMap;
 import mygame.game.entity.Npc;
 import mygame.game.entity.Player;
+import mygame.game.item.ItemRegistry;
+import mygame.game.item.ItemTemplate;
 import mygame.game.shop.ShopCatalog.Entry;
 
 /**
@@ -27,6 +29,11 @@ public final class ShopService {
     public sealed interface BuyResult {
         record Ok(long totalPaid, long mesoAfter) implements BuyResult {}
         record Failure(String reason) implements BuyResult {}
+    }
+
+    public sealed interface SellResult {
+        record Ok(long totalGained, long mesoAfter) implements SellResult {}
+        record Failure(String reason) implements SellResult {}
     }
 
     /**
@@ -76,5 +83,55 @@ public final class ShopService {
             }
         }
         return new BuyResult.Ok(total, player.meso());
+    }
+
+    /**
+     * 인벤토리에서 아이템 {@code qty} 개를 매입가로 판매한다.
+     *
+     * <p>매입가는 {@link ItemTemplate#sellPrice()} 가 SSoT — 어떤 NPC 든 같은 가격이다.
+     * 같은 맵에 NPC 가 존재하기만 하면 거리 무관하게 거래(구매·매입 정책 통일).
+     *
+     * <p>트랜잭션: 인벤 차감 → 메소 추가. addMeso 는 사실상 실패하지 않으므로 보상이
+     * 필요 없다 (정수 overflow 는 사전 체크로 차단).
+     */
+    public static SellResult sell(GameMap map, Player player,
+                                  String shopId, String itemId, int qty) {
+        // 1) 같은 맵에 NPC 존재 확인 (구매와 정책 통일)
+        Npc npc = map.findNpcByShopId(shopId);
+        if (npc == null) return new SellResult.Failure("상점을 찾을 수 없습니다");
+        if (ShopRegistry.find(shopId).isEmpty()) {
+            return new SellResult.Failure("상점 카탈로그가 없습니다");
+        }
+
+        // 2) 아이템 템플릿 조회 + 매입 가능 여부
+        ItemTemplate t;
+        try {
+            t = ItemRegistry.get(itemId);
+        } catch (IllegalArgumentException e) {
+            return new SellResult.Failure("알 수 없는 아이템입니다");
+        }
+        if (!t.isSellable()) {
+            return new SellResult.Failure("매입하지 않는 아이템입니다");
+        }
+
+        // 3) 수량 검증
+        if (qty <= 0) return new SellResult.Failure("수량은 양수여야 합니다");
+
+        // 4) overflow 체크
+        long total;
+        try {
+            total = Math.multiplyExact(t.sellPrice(), (long) qty);
+        } catch (ArithmeticException e) {
+            return new SellResult.Failure("가격이 너무 큽니다");
+        }
+
+        // 5) 트랜잭션: 인벤 차감 → 메소 추가. inventory.remove 는 보유 부족 시 false.
+        synchronized (player) {
+            if (!player.inventory().remove(itemId, qty)) {
+                return new SellResult.Failure("보유 수량이 부족합니다");
+            }
+            player.addMeso(total);
+        }
+        return new SellResult.Ok(total, player.meso());
     }
 }
