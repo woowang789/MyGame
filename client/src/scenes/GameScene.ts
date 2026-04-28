@@ -329,18 +329,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * NPC 와 대화를 시도. F 키와 마우스 클릭이 공통으로 호출.
-   * 거리 검증은 클라에서 한 번(즉시 피드백) + 서버에서 한 번(권위) 한다.
+   * NPC 와 대화를 시도. F 키(가까이 있을 때만, nearestNpc 가 거름) 와 마우스 클릭(거리
+   * 무관) 이 공통으로 호출. 카탈로그 조회는 거리 무관 — 멀리서도 가격을 볼 수 있다.
+   * 실제 거래(SHOP_BUY) 시점에 서버가 거리를 검증하므로 핵 방어선은 그대로다.
    */
   private tryOpenShop(npc: NpcSprite): void {
     if (!this.network.isOpen) return;
-    const dx = npc.sprite.x - this.player.x;
-    const dy = npc.sprite.y - this.player.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > NPC_INTERACT_RANGE) {
-      this.pickupLog.push('item', `${npc.name} 에게 다가가야 합니다`);
-      return;
-    }
     this.openShopId = npc.shopId;
     this.network.send({ type: 'SHOP_OPEN', shopId: npc.shopId });
   }

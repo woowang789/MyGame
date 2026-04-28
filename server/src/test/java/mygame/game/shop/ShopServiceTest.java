@@ -56,16 +56,6 @@ class ShopServiceTest {
     class Rejection {
 
         @Test
-        @DisplayName("거리 초과: NPC 와 멀면 거부")
-        void rejects_whenTooFar() {
-            // INTERACT_RANGE(80) 보다 훨씬 멀리 떨어뜨림
-            Player far = new Player(2, 2L, "far", null, "test", 1000, 0);
-            far.addMeso(1000);
-            var result = ShopService.buy(map, far, SHOP, "red_potion", 1);
-            assertInstanceOf(ShopService.BuyResult.Failure.class, result);
-        }
-
-        @Test
         @DisplayName("미등록 상점: 거부")
         void rejects_unknownShop() {
             var result = ShopService.buy(map, player, "no_such_shop", "red_potion", 1);
@@ -128,12 +118,12 @@ class ShopServiceTest {
     }
 
     @Test
-    @DisplayName("거리 정확히 INTERACT_RANGE 안: 통과")
-    void passes_atBoundary() {
-        Player edge = new Player(3, 3L, "edge", null, "test",
-                ShopService.INTERACT_RANGE - 1, 0);
-        edge.addMeso(100);
-        var result = ShopService.buy(map, edge, SHOP, "red_potion", 1);
+    @DisplayName("거리 무관: NPC 와 멀어도 거래 통과 (정책 결정)")
+    void passes_regardlessOfDistance() {
+        // 카탈로그가 열리면 거래 가능 — 거리는 검증하지 않는다.
+        Player far = new Player(3, 3L, "far", null, "test", 9999, -9999);
+        far.addMeso(100);
+        var result = ShopService.buy(map, far, SHOP, "red_potion", 1);
         assertTrue(result instanceof ShopService.BuyResult.Ok);
     }
 }
