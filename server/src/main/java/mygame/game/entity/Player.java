@@ -177,7 +177,15 @@ public final class Player {
         return applied;
     }
 
-    /** 쿨다운 체크 + 통과 시 현재 시각 기록. 한 번의 원자 연산으로 중복 사용 방지. */
+    /**
+     * 쿨다운 체크 + 통과 시 현재 시각 기록. 한 번의 원자 연산으로 중복 사용 방지.
+     *
+     * <p>"활성화 여부" 는 compute 의 반환값(= 새 매핑값) 채널로는 정확히 표현할 수
+     * 없다 — {@code now == last} 인 동시 호출에서 동치 비교가 거짓 양성을 만든다.
+     * 따라서 활성화 신호는 1-요소 배열이라는 사이드 채널로 람다 밖으로 빼낸다.
+     * 람다가 캡처하는 건 배열 참조(불변)이고, 슬롯 변경은 effectively-final 제약과
+     * 무관해 합법.
+     */
     public boolean tryActivateSkill(String skillId, long cooldownMs, long now) {
         // compute 는 키에 대해 단일 원자 연산을 보장하므로 두 스레드가 동시에 통과하는 레이스를 차단한다.
         boolean[] activated = {false};
