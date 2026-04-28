@@ -40,8 +40,14 @@ public final class Monster {
     /** 넉백 종료 시각(ms, System.currentTimeMillis). 이 값 이전이면 state 대신 넉백 속도로 이동. */
     private volatile long knockbackUntilMs = 0;
     private volatile double knockbackVx = 0;
-    /** 넉백 종료 직후 전이할 상태. null 이면 Idle 로 복귀. 어그로(추격) 삽입 지점. */
+    /** 넉백 종료 직후 전이할 상태. 명시 지정(예: 추격) 우선이며 null 이면 직전 상태로 복귀. */
     private volatile MonsterState postKnockbackState = null;
+    /**
+     * 넉백 직전의 state. {@link #postKnockbackState} 가 비어있을 때 복귀 대상으로 쓴다.
+     * 환경 넉백(트랩·보스 스킬 등)처럼 "원래 하던 일을 잠깐 끊는" 효과에서 자연스러운
+     * 복귀를 보장한다. 연속 피격으로 덮어쓰지 않도록 첫 넉백 시작 시에만 채운다.
+     */
+    private volatile MonsterState preKnockbackState = null;
 
     public Monster(int id, String template,
                    double spawnX, double groundY,
@@ -98,8 +104,15 @@ public final class Monster {
     /**
      * 넉백 속도와 지속시간을 설정한다. 양수면 오른쪽, 음수면 왼쪽.
      * 지속 중에는 state 의 update 대신 넉백 이동이 우선한다.
+     *
+     * <p>첫 진입 시에만 직전 state 를 보관한다 — 연속 피격으로 인해 한 번 더
+     * 호출돼도 보관된 "원래 행동" 이 덮이지 않게 해, 사슬 종료 후 정상 복귀를
+     * 보장한다.
      */
     public synchronized void applyKnockback(double vx, long durationMs) {
+        if (knockbackUntilMs == 0) {
+            this.preKnockbackState = this.state;
+        }
         this.knockbackVx = vx;
         this.knockbackUntilMs = System.currentTimeMillis() + Math.max(0, durationMs);
         this.vx = vx;
@@ -128,8 +141,12 @@ public final class Monster {
             knockbackVx = 0;
             MonsterState next = postKnockbackState;
             postKnockbackState = null;
-            // 추격이 꽂혀 있으면 플레이어를 향해, 아니면 기본 Idle → Wander 사이클.
-            transitionTo(next != null ? next : new IdleState());
+            MonsterState prev = preKnockbackState;
+            preKnockbackState = null;
+            // 우선순위: ① 명시 후속 상태(예: 어그로 추격) → ② 직전 상태 복귀 → ③ Idle 안전망.
+            // ②가 핵심: 환경 넉백처럼 "원래 하던 일" 을 그대로 이어가야 자연스럽다.
+            MonsterState resume = next != null ? next : (prev != null ? prev : new IdleState());
+            transitionTo(resume);
         }
         if (state != null) {
             state.update(this, dtMs);
