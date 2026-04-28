@@ -7,6 +7,7 @@ import { RemotePlayer } from '../entities/RemotePlayer';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
 import { ChatController } from '../ui/ChatController';
 import { EffectFactory } from '../ui/EffectFactory';
+import { InputRouter } from '../ui/InputRouter';
 import { applyMeta, EQUIPMENT_IDS, HudView, SKILL_META } from '../ui/HudView';
 import { getItemMeta } from '../data/ItemMeta';
 import { PickupLog } from '../ui/PickupLog';
@@ -115,7 +116,7 @@ export class GameScene extends Phaser.Scene {
     this.network = network;
     this.playerName = session.username;
     this.effects = new EffectFactory(this);
-    this.chat = new ChatController(this, network);
+    this.chat = new ChatController(network);
   }
 
   preload(): void {
@@ -165,6 +166,9 @@ export class GameScene extends Phaser.Scene {
     // localStorage 네임스페이스: 캐릭터 이름 단위로 슬롯 순서를 분리.
     this.hud.setAccountKey(this.playerName);
     this.chat.setup();
+    // 글로벌 입력 라우터: 모든 HTML input 포커스 시 Phaser 키 캡처를 끈다.
+    // 채팅·상점 수량·미래의 강화 NPC 입력 등 모든 텍스트 입력에 일괄 적용.
+    new InputRouter(this).install();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
     document.getElementById('stat-close')?.addEventListener('click', () => this.hud.closeStat());
     document.getElementById('shop-close')?.addEventListener('click', () => this.closeShop());
