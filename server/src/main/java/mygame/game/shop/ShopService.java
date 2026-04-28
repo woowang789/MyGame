@@ -15,11 +15,12 @@ import mygame.game.shop.ShopCatalog.Entry;
  * 작업이지만, 외부 DB 가 아니라 메모리 상태이므로 SQL 트랜잭션이 아닌
  * 명시적 보상(compensation) 으로 원자성을 흉내 낸다 — spendMeso 가 통과한 뒤
  * inventory.add 가 실패하면 즉시 메소를 환불한다.
+ *
+ * <p><b>거리 정책</b>: 카탈로그 조회(SHOP_OPEN)와 거래(SHOP_BUY) 모두 거리 검증을
+ * 두지 않는다. "카탈로그가 열렸다 = 거래 가능" 이 사용자 모델과 일치하므로
+ * 두 단계의 정책을 통일한 결과. 핵 방어는 메소·재고·overflow 검증으로 충분.
  */
 public final class ShopService {
-
-    /** NPC 와 플레이어가 거래할 수 있는 최대 거리(px). UI 인터랙션 거리와 동일. */
-    public static final double INTERACT_RANGE = 80.0;
 
     private ShopService() {}
 
@@ -31,7 +32,7 @@ public final class ShopService {
     /**
      * 상점에서 한 종류의 아이템을 {@code qty} 만큼 구매한다.
      *
-     * @param map    현재 플레이어가 있는 맵 (NPC 위치 검증용)
+     * @param map    현재 플레이어가 있는 맵 (NPC 존재 확인용)
      * @param player 구매 주체
      * @param shopId 상점 식별자
      * @param itemId 아이템 템플릿 ID
@@ -39,12 +40,9 @@ public final class ShopService {
      */
     public static BuyResult buy(GameMap map, Player player,
                                 String shopId, String itemId, int qty) {
-        // 1) NPC 가 같은 맵에 있고, 거리 안에 있는가 (핵 차단)
+        // 1) 같은 맵에 NPC 가 존재하는지만 확인. 거리는 검증하지 않는다.
         Npc npc = map.findNpcByShopId(shopId);
         if (npc == null) return new BuyResult.Failure("상점을 찾을 수 없습니다");
-        if (distance(npc, player) > INTERACT_RANGE) {
-            return new BuyResult.Failure("NPC 와 너무 멀리 있습니다");
-        }
 
         // 2) 카탈로그 검증
         ShopCatalog catalog = ShopRegistry.find(shopId).orElse(null);
@@ -78,11 +76,5 @@ public final class ShopService {
             }
         }
         return new BuyResult.Ok(total, player.meso());
-    }
-
-    private static double distance(Npc npc, Player p) {
-        double dx = npc.x() - p.x();
-        double dy = npc.y() - p.y();
-        return Math.sqrt(dx * dx + dy * dy);
     }
 }

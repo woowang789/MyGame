@@ -34,7 +34,9 @@ public final class ShopHandler {
         if (player == null) return;
         ShopOpenRequest req = ctx.json().treeToValue(ctx.body(), ShopOpenRequest.class);
 
-        // 카탈로그 + NPC 위치(거리) 모두 검증해야 핵을 막는다.
+        // SHOP_OPEN 은 단순한 카탈로그 조회 — 거리 검증을 두지 않는다. 마우스 클릭으로
+        // 멀리서도 가격 확인이 가능하도록 한 의도. 실제 거래(SHOP_BUY) 시점에 ShopService
+        // 가 거리·메소·인벤을 모두 검증하므로 핵 방어선은 그대로 유지된다.
         GameMap map = world.map(player.mapId());
         if (map == null) {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "맵 정보 없음"));
@@ -43,12 +45,6 @@ public final class ShopHandler {
         var npc = map.findNpcByShopId(req.shopId());
         if (npc == null) {
             ctx.conn().send(PacketEnvelope.error(ctx.json(), "이 맵에 해당 상점이 없습니다"));
-            return;
-        }
-        double dx = npc.x() - player.x();
-        double dy = npc.y() - player.y();
-        if (Math.sqrt(dx * dx + dy * dy) > ShopService.INTERACT_RANGE) {
-            ctx.conn().send(PacketEnvelope.error(ctx.json(), "NPC 와 너무 멀리 있습니다"));
             return;
         }
 
