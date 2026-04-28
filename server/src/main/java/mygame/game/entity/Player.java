@@ -7,8 +7,21 @@ import mygame.game.stat.Stats;
 import mygame.network.packets.Packets.PlayerState;
 import org.java_websocket.WebSocket;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * 게임 내 한 명의 플레이어.
+ *
+ * <p><b>두 종류의 식별자</b>
+ * <ul>
+ *   <li>{@link #id()} — <b>세션 ID</b>. 접속할 때마다 새로 발급되는 짧은 정수.
+ *       네트워크 패킷의 {@code playerId} 필드, 같은 맵 안의 다른 클라가 이 플레이어를
+ *       지칭할 때 쓰인다. 재접속하면 값이 바뀐다.
+ *   <li>{@link #dbId()} — <b>영속 식별자</b>(players 테이블 PK). 캐릭터 수명 동안
+ *       불변. DB 저장·로드, Repository 호출에서만 쓰인다. 네트워크에 노출되지 않는다.
+ * </ul>
+ * 두 ID 를 섞어 쓰면 사고가 나기 쉬워, 서로 타입(int vs long) 과 명칭으로 분리했다.
  *
  * <p>상태 변경은 {@link #updatePosition(double, double, double, double)} 을 통해서만
  * 일어난다. 서버 측 게임 루프(Phase E 이후)가 권위를 갖게 되면 이 setter 도
@@ -22,8 +35,11 @@ public final class Player {
     private final int id;
     private final String name;
     private final WebSocket connection;
-    /** DB primary key. 세션 ID 와 별개로 영속 식별자. */
-    private volatile long dbId = -1;
+    /**
+     * DB primary key (players 테이블). 생성자에서 한 번만 주입되어 final.
+     * 0 이하 값은 invariant 위반으로 거부한다 — "Player 인스턴스가 존재한다 = dbId 가 유효하다".
+     */
+    private final long dbId;
 
     private volatile String mapId;
     private volatile double x;
@@ -45,10 +61,16 @@ public final class Player {
     private final Inventory inventory = new Inventory();
     private final Equipment equipment = new Equipment();
     /** 스킬 ID → 마지막 사용 시각(ms). 쿨다운 판정. 접근은 한 플레이어 스레드에서만. */
-    private final java.util.Map<String, Long> skillLastUsedAt = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, Long> skillLastUsedAt = new ConcurrentHashMap<>();
 
-    public Player(int id, String name, WebSocket connection, String mapId, double spawnX, double spawnY) {
+    public Player(int id, long dbId, String name, WebSocket connection,
+                  String mapId, double spawnX, double spawnY) {
+        if (dbId <= 0) {
+            // 신규 캐릭터든 기존 캐릭터든 Repository 가 양수 PK 를 보장한 뒤에야 호출돼야 한다.
+            throw new IllegalArgumentException("dbId 는 양수여야 합니다: " + dbId);
+        }
         this.id = id;
+        this.dbId = dbId;
         this.name = name;
         this.connection = connection;
         this.mapId = mapId;
@@ -60,7 +82,6 @@ public final class Player {
     public String name() { return name; }
     public WebSocket connection() { return connection; }
     public long dbId() { return dbId; }
-    public void setDbId(long dbId) { this.dbId = dbId; }
     public String mapId() { return mapId; }
     public double x() { return x; }
     public double y() { return y; }

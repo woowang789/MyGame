@@ -55,10 +55,11 @@ class GameMapContactHitCleanupTest {
         @DisplayName("removePlayer: 해당 플레이어의 모든 페어 제거, 다른 플레이어는 유지")
         void removePlayer_clearsOnlyThatPlayer() {
             GameMap map = newMap();
+            // dbId(두 번째 인자) 는 1 이상 양수만 허용. 테스트엔 의미 없는 임의값.
             map.addPlayer(new mygame.game.entity.Player(
-                    1, "p1", null, "test", 0, 0));
+                    1, 1L, "p1", null, "test", 0, 0));
             map.addPlayer(new mygame.game.entity.Player(
-                    2, "p2", null, "test", 0, 0));
+                    2, 2L, "p2", null, "test", 0, 0));
             map.putContactHitForTest(1, 100, 1L);
             map.putContactHitForTest(1, 200, 2L);
             map.putContactHitForTest(2, 100, 3L);
