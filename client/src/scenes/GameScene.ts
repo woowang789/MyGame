@@ -321,7 +321,28 @@ export class GameScene extends Phaser.Scene {
 
   private spawnNpc(n: NpcStateMsg): void {
     if (this.npcs.has(n.id)) return;
-    this.npcs.set(n.id, new NpcSprite(this, n.id, n.name, n.shopId, n.x, n.y));
+    // 클릭 콜백은 F 키와 동일한 경로(tryOpenShop) — 거리 검증·패킷 송신을 한 곳에 둔다.
+    const sprite = new NpcSprite(this, n.id, n.name, n.shopId, n.x, n.y, (npc) =>
+      this.tryOpenShop(npc)
+    );
+    this.npcs.set(n.id, sprite);
+  }
+
+  /**
+   * NPC 와 대화를 시도. F 키와 마우스 클릭이 공통으로 호출.
+   * 거리 검증은 클라에서 한 번(즉시 피드백) + 서버에서 한 번(권위) 한다.
+   */
+  private tryOpenShop(npc: NpcSprite): void {
+    if (!this.network.isOpen) return;
+    const dx = npc.sprite.x - this.player.x;
+    const dy = npc.sprite.y - this.player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > NPC_INTERACT_RANGE) {
+      this.pickupLog.push('item', `${npc.name} 에게 다가가야 합니다`);
+      return;
+    }
+    this.openShopId = npc.shopId;
+    this.network.send({ type: 'SHOP_OPEN', shopId: npc.shopId });
   }
 
   /** 플레이어 위치 기준 가장 가까운 NPC. INTERACT_RANGE 안에 없으면 null. */
@@ -669,13 +690,10 @@ export class GameScene extends Phaser.Scene {
       if (this.openShopId) this.closeShop();
     }
 
-    // F: 가까운 NPC 와 상호작용 — 첫 단계는 상점 NPC 만.
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey) && this.network.isOpen) {
+    // F: 가까운 NPC 와 상호작용 — 첫 단계는 상점 NPC 만. 클릭 경로와 동일 함수에 위임.
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
       const npc = this.nearestNpc();
-      if (npc) {
-        this.openShopId = npc.shopId;
-        this.network.send({ type: 'SHOP_OPEN', shopId: npc.shopId });
-      }
+      if (npc) this.tryOpenShop(npc);
     }
 
     // 매 프레임 가까운 NPC 의 「F: 대화」 힌트 표시.
