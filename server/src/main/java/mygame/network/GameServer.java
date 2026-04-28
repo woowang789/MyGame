@@ -179,22 +179,21 @@ public final class GameServer extends WebSocketServer {
         world.unregisterPlayer(player);
 
         // DB 저장. 실패해도 연결 종료는 계속 진행.
-        if (player.dbId() > 0) {
-            try {
-                playerRepo.save(
-                        player.dbId(),
-                        player.level(),
-                        player.exp(),
-                        player.meso(),
-                        player.hp(),
-                        player.mp(),
-                        player.inventory().snapshot(),
-                        SessionNotifier.equipmentSnapshotAsStringMap(player));
-                log.info("플레이어 저장: name={}, lv={}, exp={}, hp={}, mp={}",
-                        player.name(), player.level(), player.exp(), player.hp(), player.mp());
-            } catch (Exception e) {
-                log.error("플레이어 저장 실패: name={}", player.name(), e);
-            }
+        // dbId 는 Player 생성 invariant 로 항상 유효 — 별도 가드 불필요.
+        try {
+            playerRepo.save(
+                    player.dbId(),
+                    player.level(),
+                    player.exp(),
+                    player.meso(),
+                    player.hp(),
+                    player.mp(),
+                    player.inventory().snapshot(),
+                    SessionNotifier.equipmentSnapshotAsStringMap(player));
+            log.info("플레이어 저장: name={}, lv={}, exp={}, hp={}, mp={}",
+                    player.name(), player.level(), player.exp(), player.hp(), player.mp());
+        } catch (Exception e) {
+            log.error("플레이어 저장 실패: name={}", player.name(), e);
         }
     }
 
@@ -266,11 +265,12 @@ public final class GameServer extends WebSocketServer {
             data = playerRepo.create(name, accountId);
         }
 
-        int id = playerIdSeq.getAndIncrement();
+        int sessionId = playerIdSeq.getAndIncrement();
         GameMap map = world.defaultMap();
-        Player player = new Player(id, name, ctx.conn(), map.id(), map.spawnX(), map.spawnY());
+        // dbId 는 Repository 가 보장한 양수 PK. 생성자에서 invariant 검증.
+        Player player = new Player(sessionId, data.id(), name, ctx.conn(),
+                map.id(), map.spawnX(), map.spawnY());
 
-        player.setDbId(data.id());
         player.restoreProgress(data.level(), data.exp());
         player.restoreMeso(data.meso());
         data.items().forEach(player.inventory()::add);
@@ -291,9 +291,9 @@ public final class GameServer extends WebSocketServer {
         world.registerPlayer(player);
 
         WelcomePacket welcome = new WelcomePacket(
-                id,
+                sessionId,
                 player.toState(),
-                map.othersOf(id).stream().map(Player::toState).toList(),
+                map.othersOf(sessionId).stream().map(Player::toState).toList(),
                 map.monsters().stream().map(GameServer::toMonsterState).toList(),
                 map.droppedItems().stream().map(GameServer::toItemState).toList()
         );
@@ -301,7 +301,7 @@ public final class GameServer extends WebSocketServer {
         // META: 정적 레지스트리(아이템·스킬) 를 단일 진실 원천으로 내려 보낸다.
         // 클라 HUD 의 장비 판별, 스킬 쿨다운 HUD 가 이 패킷으로 초기화된다.
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "META", buildMeta()));
-        map.broadcastExcept(id, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
+        map.broadcastExcept(sessionId, "PLAYER_JOIN", new PlayerJoinedPacket(player.toState()));
 
         // 복원된 진행도/인벤토리/장비/최종 스탯을 당사자에게 전달
         ctx.conn().send(PacketEnvelope.wrap(ctx.json(), "PLAYER_EXP",

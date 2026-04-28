@@ -94,7 +94,8 @@ class MonsterKnockbackTest {
      * 부작용이므로 fullHealHp 로 살려 둔다.
      */
     private static Player stubPlayer() {
-        Player p = new Player(99, "stub", null, "test", 0, 0);
+        // 두 번째 인자(dbId) 는 1 이상 양수만 허용. 테스트엔 의미 없으므로 임의 양수.
+        Player p = new Player(99, 1, "stub", null, "test", 0, 0);
         p.fullHealHp();
         return p;
     }

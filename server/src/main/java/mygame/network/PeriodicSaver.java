@@ -60,7 +60,7 @@ public final class PeriodicSaver {
         if (snapshot.isEmpty()) return;
         int ok = 0, fail = 0;
         for (Player p : snapshot) {
-            if (p.dbId() <= 0) continue; // 미인증/미저장 세션
+            // Player 생성 invariant 로 dbId 는 항상 유효(양수). 별도 스킵 가드 불필요.
             try {
                 repo.save(
                         p.dbId(),
