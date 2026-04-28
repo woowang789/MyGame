@@ -604,6 +604,27 @@
         font-size: 13px;
         cursor: pointer;
       }
+      #shop-window .tabs {
+        display: flex;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      #shop-window .tab {
+        flex: 1;
+        padding: 8px 0;
+        text-align: center;
+        font-size: 12px;
+        color: #8a8a96;
+        cursor: pointer;
+        user-select: none;
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      #shop-window .tab:last-child { border-right: none; }
+      #shop-window .tab:hover { color: #cfcfd6; }
+      #shop-window .tab.active {
+        color: #ffeb8a;
+        background: rgba(255, 235, 138, 0.08);
+        font-weight: 600;
+      }
       #shop-window .body { padding: 12px 14px; }
       #shop-window .shop-meso {
         text-align: right;
@@ -652,6 +673,66 @@
       #shop-window .shop-row button.buy:disabled {
         background: #555;
         cursor: not-allowed;
+      }
+
+      /* ----- 공통 확인 다이얼로그 ----- */
+      #confirm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      #confirm-overlay.hidden { display: none; }
+      #confirm-dialog {
+        min-width: 280px;
+        max-width: 380px;
+        background: #232331;
+        border: 1px solid rgba(255, 235, 138, 0.25);
+        border-radius: 8px;
+        padding: 16px 18px;
+        color: #e7e7ec;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+        font-size: 13px;
+      }
+      #confirm-dialog .title {
+        font-weight: 700;
+        color: #ffeb8a;
+        margin-bottom: 8px;
+      }
+      #confirm-dialog .message {
+        line-height: 1.5;
+        margin-bottom: 14px;
+        color: #cfcfd6;
+      }
+      #confirm-dialog .actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      #confirm-dialog .actions button {
+        padding: 6px 14px;
+        font-size: 12px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: transparent;
+        color: #cfcfd6;
+        cursor: pointer;
+      }
+      #confirm-dialog .actions button:hover {
+        border-color: rgba(255, 255, 255, 0.3);
+        color: #fff;
+      }
+      #confirm-dialog .actions button.primary {
+        background: #4a7d4a;
+        border-color: #4a7d4a;
+        color: #fff;
+      }
+      #confirm-dialog .actions button.primary:hover {
+        background: #5a9d5a;
+        border-color: #5a9d5a;
       }
       #stat-window .header .title {
         font-weight: 700;
@@ -786,12 +867,31 @@
     <div id="shop-window" class="hidden">
       <div class="header">
         <span class="title" id="shop-title">상점</span>
-        <span class="hint">행 더블클릭 또는 [구매] 클릭 · 수량 입력 가능</span>
+        <span class="hint">탭으로 구매/팔기 전환 · 클릭 시 확인 창</span>
         <button id="shop-close" class="close-btn" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="tabs" id="shop-tabs">
+        <div class="tab active" data-tab="BUY">구매</div>
+        <div class="tab" data-tab="SELL">팔기</div>
       </div>
       <div class="body">
         <div id="shop-meso" class="shop-meso">보유: 0 메소</div>
         <div id="shop-list" class="shop-list"></div>
+      </div>
+    </div>
+
+    <!--
+      공통 확인 다이얼로그. 구매·매입·향후 다른 위험 동작에 재사용.
+      Esc / 배경 클릭 / [취소] 모두 dismiss. Enter 는 확인.
+    -->
+    <div id="confirm-overlay" class="hidden">
+      <div id="confirm-dialog" role="dialog" aria-modal="true">
+        <div class="title" id="confirm-title">확인</div>
+        <div class="message" id="confirm-message"></div>
+        <div class="actions">
+          <button id="confirm-no" type="button">취소</button>
+          <button id="confirm-yes" type="button" class="primary">확인</button>
+        </div>
       </div>
     </div>
 

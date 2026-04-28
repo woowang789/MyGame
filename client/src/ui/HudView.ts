@@ -29,6 +29,13 @@ export type InventoryAction =
  *
  * 사용처: GameScene 이 서버 패킷을 받아 파싱한 뒤 이 뷰의 update* 메서드로 전달.
  */
+/** 상점 [구매] 탭의 한 항목 — 서버 SHOP_OPENED 응답을 옮긴 형태. */
+export interface ShopBuyItem {
+  itemId: string;
+  price: number;
+  stockPerTransaction: number;
+}
+
 export interface SkillMeta {
   readonly name: string;
   readonly cooldownMs: number;
@@ -46,16 +53,27 @@ export const SKILL_META: Record<string, SkillMeta> = {};
 const equipmentIdSet = new Set<string>();
 export const EQUIPMENT_IDS: ReadonlySet<string> = equipmentIdSet;
 
-/** META 패킷으로 받은 장비 · 스킬 메타를 클라 런타임 상수로 반영. */
+/**
+ * 매입가 맵. itemId → 메소. 0 이거나 미수록이면 매입 불가.
+ * META 패킷으로 1회 수신 후 상점 [팔기] 탭이 참조한다.
+ */
+export const SELL_PRICES: Record<string, number> = {};
+
+/** META 패킷으로 받은 장비 · 스킬 · 매입가 메타를 클라 런타임 상수로 반영. */
 export function applyMeta(meta: {
   equipmentIds: readonly string[];
   skills: readonly { id: string; name: string; mpCost: number; cooldownMs: number }[];
+  sellPrices?: Readonly<Record<string, number>>;
 }): void {
   equipmentIdSet.clear();
   for (const id of meta.equipmentIds) equipmentIdSet.add(id);
   for (const key of Object.keys(SKILL_META)) delete SKILL_META[key];
   for (const s of meta.skills) {
     SKILL_META[s.id] = { name: s.name, cooldownMs: s.cooldownMs, mpCost: s.mpCost };
+  }
+  for (const key of Object.keys(SELL_PRICES)) delete SELL_PRICES[key];
+  if (meta.sellPrices) {
+    for (const [k, v] of Object.entries(meta.sellPrices)) SELL_PRICES[k] = v;
   }
 }
 
@@ -390,70 +408,223 @@ export class HudView {
     return document.getElementById('stat-window')?.classList.contains('hidden') === false;
   }
 
+  /** 현재 열린 상점 컨텍스트. 인벤 갱신 시 [팔기] 탭 재렌더에 사용. */
+  private shopCtx: {
+    shopId: string;
+    npcName: string;
+    items: ShopBuyItem[];
+    onBuy: (itemId: string, qty: number) => void;
+    onSell: (itemId: string, qty: number) => void;
+    tab: 'BUY' | 'SELL';
+  } | null = null;
+
   /**
-   * 상점 창 열기. 카탈로그를 동적 렌더하고 구매 콜백을 바인딩한다.
+   * 상점 창 열기. [구매]/[팔기] 두 탭을 한 창에서 운용한다.
    * 같은 창에 여러 NPC 카탈로그가 갈마들 수 있으므로 매번 그리드를 재구성한다.
    */
   openShop(
     shopId: string,
     npcName: string,
-    items: { itemId: string; price: number; stockPerTransaction: number }[],
+    items: ShopBuyItem[],
     meso: number,
-    onBuy: (itemId: string, qty: number) => void
+    onBuy: (itemId: string, qty: number) => void,
+    onSell: (itemId: string, qty: number) => void
   ): void {
     const win = document.getElementById('shop-window');
     if (!win) return;
     const titleEl = document.getElementById('shop-title');
     if (titleEl) titleEl.textContent = `${npcName} (${shopId})`;
-    const list = document.getElementById('shop-list');
-    if (!list) return;
-    list.innerHTML = '';
-    for (const it of items) {
-      const row = document.createElement('div');
-      row.className = 'shop-row';
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = ITEM_NAMES[it.itemId] ?? it.itemId;
-      const price = document.createElement('span');
-      price.className = 'price';
-      price.textContent = `${it.price.toLocaleString()} 메소`;
-      const qty = document.createElement('input');
-      qty.className = 'qty';
-      qty.type = 'number';
-      qty.min = '1';
-      qty.max = String(it.stockPerTransaction);
-      qty.value = '1';
-      const buy = document.createElement('button');
-      buy.className = 'buy';
-      buy.type = 'button';
-      buy.textContent = '구매';
-      buy.addEventListener('click', () => {
-        const n = Math.max(1, Math.min(it.stockPerTransaction, parseInt(qty.value, 10) || 1));
-        onBuy(it.itemId, n);
-      });
-      row.append(name, price, qty, buy);
-      list.appendChild(row);
-    }
+
+    this.shopCtx = { shopId, npcName, items, onBuy, onSell, tab: 'BUY' };
+    this.bindShopTabs();
+    this.renderShopBody();
     this.updateShopMeso(meso);
     win.classList.remove('hidden');
   }
 
   closeShop(): void {
     document.getElementById('shop-window')?.classList.add('hidden');
+    this.shopCtx = null;
   }
 
   isShopOpen(): boolean {
     return document.getElementById('shop-window')?.classList.contains('hidden') === false;
   }
 
-  /** SHOP_RESULT 처리. 실패면 오류 토스트는 호출자(GameScene)가 picker 로 띄우고, 메소 갱신만 본 메서드. */
+  /** 인벤이 바뀌면 호출됨. 현재 [팔기] 탭이 열려있다면 보유 아이템 그리드를 갱신. */
+  refreshShopSellTabIfOpen(): void {
+    if (!this.shopCtx || this.shopCtx.tab !== 'SELL') return;
+    if (!this.isShopOpen()) return;
+    this.renderShopBody();
+  }
+
+  /** SHOP_RESULT 처리. 메소 갱신과 인벤 변동에 따른 [팔기] 탭 재렌더. */
   handleShopResult(_ok: boolean, _reason: string | null, mesoAfter: number): void {
     this.updateShopMeso(mesoAfter);
+    this.refreshShopSellTabIfOpen();
+  }
+
+  private bindShopTabs(): void {
+    const tabs = document.querySelectorAll('#shop-tabs .tab');
+    tabs.forEach((el) => {
+      const tab = (el as HTMLElement).dataset.tab as 'BUY' | 'SELL' | undefined;
+      // 매번 listener 가 누적되지 않도록 cloneNode 로 핸들러 리셋.
+      const fresh = el.cloneNode(true);
+      el.parentNode?.replaceChild(fresh, el);
+      fresh.addEventListener('click', () => {
+        if (!tab || !this.shopCtx) return;
+        this.shopCtx.tab = tab;
+        document.querySelectorAll('#shop-tabs .tab').forEach((t) =>
+          t.classList.toggle('active', (t as HTMLElement).dataset.tab === tab)
+        );
+        this.renderShopBody();
+      });
+    });
+    // 초기 활성 탭 갱신
+    document.querySelectorAll('#shop-tabs .tab').forEach((t) =>
+      t.classList.toggle('active', (t as HTMLElement).dataset.tab === this.shopCtx?.tab)
+    );
+  }
+
+  private renderShopBody(): void {
+    const list = document.getElementById('shop-list');
+    if (!list || !this.shopCtx) return;
+    list.innerHTML = '';
+    if (this.shopCtx.tab === 'BUY') {
+      this.renderBuyRows(list);
+    } else {
+      this.renderSellRows(list);
+    }
+  }
+
+  private renderBuyRows(list: HTMLElement): void {
+    if (!this.shopCtx) return;
+    for (const it of this.shopCtx.items) {
+      const row = this.shopRow(
+        ITEM_NAMES[it.itemId] ?? it.itemId,
+        `${it.price.toLocaleString()} 메소`,
+        it.stockPerTransaction,
+        '구매',
+        (qty) => {
+          const total = it.price * qty;
+          this.confirm(
+            `구매 확인`,
+            `${ITEM_NAMES[it.itemId] ?? it.itemId} ×${qty} 을(를) ${total.toLocaleString()} 메소에 구매하시겠습니까?`,
+            () => this.shopCtx!.onBuy(it.itemId, qty)
+          );
+        }
+      );
+      list.appendChild(row);
+    }
+  }
+
+  private renderSellRows(list: HTMLElement): void {
+    // 인벤토리 보유 × 매입가(>0) 교집합. 마지막 인벤 스냅샷을 사용한다.
+    const inv = this.lastInventory;
+    const owned = Object.entries(inv).filter(([, qty]) => qty > 0);
+    const sellable = owned.filter(([id]) => (SELL_PRICES[id] ?? 0) > 0);
+    if (sellable.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.padding = '12px';
+      empty.style.color = '#7a7a88';
+      empty.style.textAlign = 'center';
+      empty.textContent = '매입할 아이템이 없습니다';
+      list.appendChild(empty);
+      return;
+    }
+    for (const [itemId, owns] of sellable) {
+      const price = SELL_PRICES[itemId];
+      const row = this.shopRow(
+        `${ITEM_NAMES[itemId] ?? itemId} ×${owns}`,
+        `${price.toLocaleString()} 메소`,
+        owns, // 보유 수량까지만 한 번에 매입
+        '팔기',
+        (qty) => {
+          const total = price * qty;
+          this.confirm(
+            `매입 확인`,
+            `${ITEM_NAMES[itemId] ?? itemId} ×${qty} 을(를) ${total.toLocaleString()} 메소에 판매하시겠습니까?`,
+            () => this.shopCtx!.onSell(itemId, qty)
+          );
+        }
+      );
+      list.appendChild(row);
+    }
+  }
+
+  /** 한 줄 row 빌더. 구매/매입 공통. */
+  private shopRow(
+    label: string, priceText: string, maxQty: number,
+    btnLabel: string, onAct: (qty: number) => void
+  ): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'shop-row';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = label;
+    const price = document.createElement('span');
+    price.className = 'price';
+    price.textContent = priceText;
+    const qty = document.createElement('input');
+    qty.className = 'qty';
+    qty.type = 'number';
+    qty.min = '1';
+    qty.max = String(maxQty);
+    qty.value = '1';
+    const btn = document.createElement('button');
+    btn.className = 'buy';
+    btn.type = 'button';
+    btn.textContent = btnLabel;
+    btn.addEventListener('click', () => {
+      const n = Math.max(1, Math.min(maxQty, parseInt(qty.value, 10) || 1));
+      onAct(n);
+    });
+    row.append(name, price, qty, btn);
+    return row;
   }
 
   private updateShopMeso(meso: number): void {
     const el = document.getElementById('shop-meso');
     if (el) el.textContent = `보유: ${meso.toLocaleString()} 메소`;
+  }
+
+  /**
+   * 공통 확인 다이얼로그. Esc / 배경 클릭 / [취소] 모두 dismiss.
+   * 같은 모달을 재사용하므로 동시에 둘이 뜨지 않는다.
+   */
+  confirm(title: string, message: string, onYes: () => void): void {
+    const overlay = document.getElementById('confirm-overlay');
+    const titleEl = document.getElementById('confirm-title');
+    const msgEl = document.getElementById('confirm-message');
+    const yes = document.getElementById('confirm-yes') as HTMLButtonElement | null;
+    const no = document.getElementById('confirm-no') as HTMLButtonElement | null;
+    if (!overlay || !titleEl || !msgEl || !yes || !no) return;
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    overlay.classList.remove('hidden');
+
+    const close = () => {
+      overlay.classList.add('hidden');
+      // listener 누적 방지 — clone 으로 갈아끼움.
+      const yes2 = yes.cloneNode(true) as HTMLButtonElement;
+      yes.parentNode?.replaceChild(yes2, yes);
+      const no2 = no.cloneNode(true) as HTMLButtonElement;
+      no.parentNode?.replaceChild(no2, no);
+      window.removeEventListener('keydown', onKey);
+      overlay.removeEventListener('click', onBackdrop);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'Enter') { close(); onYes(); }
+    };
+    const onBackdrop = (e: MouseEvent) => {
+      if (e.target === overlay) close();
+    };
+    yes.addEventListener('click', () => { close(); onYes(); });
+    no.addEventListener('click', close);
+    window.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', onBackdrop);
+    yes.focus();
   }
 
   /**

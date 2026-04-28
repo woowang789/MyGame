@@ -201,7 +201,8 @@ export class GameScene extends Phaser.Scene {
     this.network.on('META', (p) => {
       applyMeta({
         equipmentIds: (p.equipmentIds ?? []) as string[],
-        skills: (p.skills ?? []) as { id: string; name: string; mpCost: number; cooldownMs: number }[]
+        skills: (p.skills ?? []) as { id: string; name: string; mpCost: number; cooldownMs: number }[],
+        sellPrices: (p.sellPrices ?? {}) as Record<string, number>
       });
     });
     this.network.on('WELCOME', (p) => this.onWelcome(p));
@@ -560,10 +561,14 @@ export class GameScene extends Phaser.Scene {
     const items = (p.items ?? []) as { itemId: string; price: number; stockPerTransaction: number }[];
     const meso = p.meso as number;
     this.openShopId = shopId;
-    this.hud.openShop(shopId, npcName, items, meso, (itemId, qty) => {
-      // 구매 버튼 클릭 → 서버 요청. 응답은 onShopResult 에서.
-      this.network.send({ type: 'SHOP_BUY', shopId, itemId, qty });
-    });
+    this.hud.openShop(
+      shopId,
+      npcName,
+      items,
+      meso,
+      (itemId, qty) => this.network.send({ type: 'SHOP_BUY', shopId, itemId, qty }),
+      (itemId, qty) => this.network.send({ type: 'SHOP_SELL', shopId, itemId, qty })
+    );
   }
 
   private onShopResult(p: Packet): void {

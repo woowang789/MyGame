@@ -20,28 +20,43 @@ public final class ItemRegistry {
     private static final Map<String, ItemTemplate> TEMPLATES;
 
     static {
+        // 매입가 정책:
+        //  - NPC 가 파는 장비: 구매가의 50%
+        //  - 드롭 전용 장비: 임의 책정 (강화 시스템 도입 시 재조정 예정)
+        //  - 잡템: 메소 드롭(1~5)과 비슷한 수준 — 인플레이션 가속 방지
+        //  - 포션: 사용자 결정으로 매입 가능
         Map<String, ItemTemplate> m = new LinkedHashMap<>();
         put(m, new ItemTemplate("red_potion", "빨간 포션", 0xe74c3c,
-                ItemType.CONSUMABLE, new UseEffect(30, 0)));
+                ItemType.CONSUMABLE, new UseEffect(30, 0), 25L));
         put(m, new ItemTemplate("blue_potion", "파란 포션", 0x3498db,
-                ItemType.CONSUMABLE, new UseEffect(0, 30)));
-        put(m, new ItemTemplate("snail_shell", "달팽이 껍질", 0xb36836, ItemType.ETC));
+                ItemType.CONSUMABLE, new UseEffect(0, 30), 40L));
+        put(m, new ItemTemplate("snail_shell", "달팽이 껍질", 0xb36836,
+                ItemType.ETC, 5L));
         // Phase I: 장비 아이템. bonus 는 장착 시 BaseStats 에 더해지는 값.
         // 순서: (maxHp, maxMp, attack, speed)
         put(m, new ItemTemplate("wooden_sword", "나무 검", 0x8b5a2b,
-                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 10, 0)));
+                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 10, 0), 750L));
         put(m, new ItemTemplate("iron_sword", "철 검", 0xbfc7d5,
-                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 25, 0)));
+                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 25, 0), 1000L));
         put(m, new ItemTemplate("leather_cap", "가죽 모자", 0x6a4e2a,
-                ItemType.EQUIPMENT, EquipSlot.HAT, new Stats(15, 5, 0, 0)));
+                ItemType.EQUIPMENT, EquipSlot.HAT, new Stats(15, 5, 0, 0), 400L));
         put(m, new ItemTemplate("cloth_armor", "천 갑옷", 0xcfa16a,
-                ItemType.EQUIPMENT, EquipSlot.ARMOR, new Stats(25, 0, 0, 0)));
+                ItemType.EQUIPMENT, EquipSlot.ARMOR, new Stats(25, 0, 0, 0), 800L));
         // 새 슬롯 추가 검증용. 게임 로직(Player·CombatService) 은 변경 없이 동작해야 한다.
         put(m, new ItemTemplate("work_gloves", "작업 장갑", 0x7d5b3a,
-                ItemType.EQUIPMENT, EquipSlot.GLOVES, new Stats(0, 0, 4, 0)));
+                ItemType.EQUIPMENT, EquipSlot.GLOVES, new Stats(0, 0, 4, 0), 200L));
         put(m, new ItemTemplate("running_shoes", "달리기 신발", 0x4caf50,
-                ItemType.EQUIPMENT, EquipSlot.SHOES, new Stats(0, 0, 0, 30)));
+                ItemType.EQUIPMENT, EquipSlot.SHOES, new Stats(0, 0, 0, 30), 200L));
         TEMPLATES = Collections.unmodifiableMap(m);
+    }
+
+    /** 모든 매입가 맵 (sellPrice > 0 인 아이템만). META 패킷으로 클라에 전달. */
+    public static java.util.Map<String, Long> sellPrices() {
+        java.util.Map<String, Long> out = new java.util.LinkedHashMap<>();
+        for (ItemTemplate t : TEMPLATES.values()) {
+            if (t.isSellable()) out.put(t.id(), t.sellPrice());
+        }
+        return java.util.Collections.unmodifiableMap(out);
     }
 
     private ItemRegistry() {}
