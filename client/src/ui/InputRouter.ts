@@ -22,6 +22,8 @@ export class InputRouter {
   private readonly onFocusIn: (e: FocusEvent) => void;
   private readonly onFocusOut: (e: FocusEvent) => void;
 
+  private readonly onKeyDown: (e: KeyboardEvent) => void;
+
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.onFocusIn = (e) => {
@@ -35,17 +37,28 @@ export class InputRouter {
         this.scene.input.keyboard?.resetKeys();
       }
     };
+    // 모든 input 류 포커스 중 ESC = 포커스 해제. 채팅의 자체 ESC 핸들러는
+    // 추가로 value 비우기 등 고유 동작을 하므로 유지된다 — 두 번 blur 가 호출돼도
+    // 두 번째는 noop 이라 안전.
+    this.onKeyDown = (e) => {
+      if (e.key === 'Escape' && this.isAnyInputFocused()) {
+        const ae = document.activeElement as HTMLElement | null;
+        ae?.blur();
+      }
+    };
   }
 
   /** 한 번만 호출. 라이프사이클이 곧 페이지 전체이므로 별도 destroy 불필요. */
   install(): void {
     document.addEventListener('focusin', this.onFocusIn);
     document.addEventListener('focusout', this.onFocusOut);
+    document.addEventListener('keydown', this.onKeyDown);
   }
 
   uninstall(): void {
     document.removeEventListener('focusin', this.onFocusIn);
     document.removeEventListener('focusout', this.onFocusOut);
+    document.removeEventListener('keydown', this.onKeyDown);
   }
 
   /**
