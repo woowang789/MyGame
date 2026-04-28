@@ -49,13 +49,27 @@ public final class GameMap {
     private final ObjectMapper json;
     private final IntSupplier monsterIdGen;
     private volatile CombatListener combatListener = null;
-    /** (playerId, monsterId) → 마지막 피격 시각. 몬스터 공격 간격 관리. */
+    /**
+     * (playerId, monsterId) → 마지막 피격 시각. 몬스터 공격 간격 관리.
+     *
+     * <p>키는 두 32비트 정수를 한 long 으로 인코딩한다 — Map<Pair> 보다 GC·해시 비용이 낮다.
+     * 메모리 누수를 막기 위해 플레이어 퇴장({@link #removePlayer}) · 몬스터 사망
+     * ({@link #killMonster}) 시 해당 id 가 포함된 키를 cleanup 한다.
+     */
     private final Map<Long, Long> lastContactHitAt = new ConcurrentHashMap<>();
 
     public void setCombatListener(CombatListener listener) { this.combatListener = listener; }
 
-    private static long pairKey(int playerId, int monsterId) {
+    static long pairKey(int playerId, int monsterId) {
         return ((long) playerId << 32) | (monsterId & 0xFFFFFFFFL);
+    }
+
+    static int extractPlayerId(long key) {
+        return (int) (key >>> 32);
+    }
+
+    static int extractMonsterId(long key) {
+        return (int) (key & 0xFFFFFFFFL);
     }
     private final Map<Integer, Player> players = new ConcurrentHashMap<>();
     private final Map<Integer, Monster> monsters = new ConcurrentHashMap<>();
@@ -85,8 +99,8 @@ public final class GameMap {
     public void removePlayer(int playerId) {
         if (players.remove(playerId) != null) {
             log.info("맵[{}] 퇴장: playerId={}, 현재 인원={}", id, playerId, players.size());
-            // 이 플레이어의 접촉 기록 제거 (key 상위 32비트가 playerId)
-            lastContactHitAt.keySet().removeIf(k -> (int) (k >>> 32) == playerId);
+            // 이 플레이어의 접촉 기록 제거 — 키 상위 32비트가 playerId.
+            lastContactHitAt.keySet().removeIf(k -> extractPlayerId(k) == playerId);
         }
     }
 
@@ -134,11 +148,25 @@ public final class GameMap {
 
     /** 사망 처리: 맵에서 제거 + 리스폰 예약 + 브로드캐스트(호출자 책임). */
     public void killMonster(Monster m, SpawnPoint origin) {
-        monsters.remove(m.id());
+        int monsterId = m.id();
+        monsters.remove(monsterId);
+        // 이 몬스터에 대한 모든 플레이어 접촉 기록 제거. 리스폰 시 새 monsterId 가
+        // 발급되므로 이전 키는 다시 쓰일 일 없이 영구히 남는다 — 누수 차단.
+        lastContactHitAt.keySet().removeIf(k -> extractMonsterId(k) == monsterId);
         if (origin != null) {
             long at = System.currentTimeMillis() + origin.respawnDelayMs();
             pendingRespawns.add(new PendingRespawn(at, origin));
         }
+    }
+
+    /** 테스트용: lastContactHitAt 의 현재 항목 수. 누수 회귀 검증에 쓰인다. */
+    int contactHitSize() {
+        return lastContactHitAt.size();
+    }
+
+    /** 테스트용: (playerId, monsterId) 페어의 접촉 기록을 직접 주입. */
+    void putContactHitForTest(int playerId, int monsterId, long now) {
+        lastContactHitAt.put(pairKey(playerId, monsterId), now);
     }
 
     /** 몬스터 id 로 원본 스폰 포인트 찾기. 단순 매칭: x 범위 기반. */
