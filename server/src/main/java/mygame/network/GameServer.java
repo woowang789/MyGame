@@ -108,7 +108,7 @@ public final class GameServer extends WebSocketServer {
         this.playerRepo = new JdbcPlayerRepository(database);
         this.accountRepo = new JdbcAccountRepository(database);
         this.auth = new AuthSessions(new AuthService(accountRepo), json);
-        world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
+        this.world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
         this.periodicSaver = new PeriodicSaver(playerRepo,
                 () -> java.util.List.copyOf(sessionPlayers.values()),
                 AUTOSAVE_INTERVAL_SECONDS);
