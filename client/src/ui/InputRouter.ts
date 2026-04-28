@@ -49,6 +49,15 @@ export class InputRouter {
   }
 
   /**
+   * 현재 포커스가 텍스트 입력 요소에 있는지. GameScene.update 가 매 프레임 질의해
+   * 스킬·이동 등 게임 입력을 건너뛸지 결정한다. 채팅·상점·미래의 모든 input 에
+   * 일관되게 적용된다(이전에는 채팅만 chat.isFocused() 로 막고 있었다).
+   */
+  isAnyInputFocused(): boolean {
+    return this.isTextEntry(document.activeElement);
+  }
+
+  /**
    * 텍스트 입력으로 간주할 요소 판별. 일반 button/checkbox 같은 input 은 게임 키와
    * 충돌이 없으므로 제외할 수도 있지만, 단순화를 위해 모든 INPUT/TEXTAREA 와
    * contenteditable 을 포함한다.

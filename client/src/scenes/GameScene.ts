@@ -102,6 +102,7 @@ export class GameScene extends Phaser.Scene {
   private readonly hud = new HudView();
   private readonly effects: EffectFactory;
   private readonly chat: ChatController;
+  private readonly inputRouter: InputRouter;
   private readonly pickupLog = new PickupLog();
   /** 인벤 증가분 계산용 마지막 스냅샷. onInventory 가 새 값 수신 시 diff 해서 알림을 쏜다. */
   private lastInventorySnapshot: Record<string, number> = {};
@@ -117,6 +118,7 @@ export class GameScene extends Phaser.Scene {
     this.playerName = session.username;
     this.effects = new EffectFactory(this);
     this.chat = new ChatController(network);
+    this.inputRouter = new InputRouter(this);
   }
 
   preload(): void {
@@ -168,7 +170,7 @@ export class GameScene extends Phaser.Scene {
     this.chat.setup();
     // 글로벌 입력 라우터: 모든 HTML input 포커스 시 Phaser 키 캡처를 끈다.
     // 채팅·상점 수량·미래의 강화 NPC 입력 등 모든 텍스트 입력에 일괄 적용.
-    new InputRouter(this).install();
+    this.inputRouter.install();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
     document.getElementById('stat-close')?.addEventListener('click', () => this.hud.closeStat());
     document.getElementById('shop-close')?.addEventListener('click', () => this.closeShop());
@@ -613,10 +615,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    // 채팅 입력 중 또는 사망 중에는 게임 입력을 전부 건너뛴다.
-    // 좌우 속도도 잠가 두어 Q/E 등이 텍스트에 섞이거나, 사망 후 키 입력으로
-    // 시체가 움직이는 현상을 막는다.
-    if (this.chat.isFocused() || this.isDead) {
+    const inputFocused = this.inputRouter.isAnyInputFocused();
+    const shopOpen = this.hud.isShopOpen();
+
+    // 상점이 열려 있고 input 포커스는 없을 때 ESC 로 닫기는 게임 가드 진입 전에 처리.
+    // input 포커스가 있으면 ESC 는 input 의 blur 로 가도록 양보한다.
+    if (shopOpen && !inputFocused && Phaser.Input.Keyboard.JustDown(this.escKey)) {
+      this.closeShop();
+    }
+
+    // 다음 중 하나라도 참이면 게임 입력을 전부 건너뛴다 — 좌우 속도도 잠가 잔류 이동 차단.
+    //  - 텍스트 입력(채팅·상점 수량 등) 포커스 중
+    //  - 상점 창 오픈 중: 거래 UI 다루는 동안 캐릭터가 멋대로 움직이면 어색
+    //  - 사망 중
+    if (inputFocused || shopOpen || this.isDead) {
       this.player.setVelocityX(0);
       for (const r of this.remotes.values()) r.update(delta);
       for (const m of this.monsters.values()) m.update(delta);
