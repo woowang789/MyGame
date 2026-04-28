@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import mygame.game.entity.Npc;
 import mygame.game.entity.Player;
 
 /**
@@ -17,6 +18,7 @@ public final class World {
     private final Map<String, GameMap> maps = new ConcurrentHashMap<>();
     private final AtomicInteger monsterIdSeq = new AtomicInteger(1);
     private final AtomicInteger itemIdSeq = new AtomicInteger(1);
+    private final AtomicInteger npcIdSeq = new AtomicInteger(1);
     /** 전역 플레이어 이름 → Player. 귓속말(맵 경계 넘는 메시지) 라우팅에 사용. */
     private final Map<String, Player> playersByName = new ConcurrentHashMap<>();
     private volatile CombatListener combatListener = null;
@@ -40,6 +42,13 @@ public final class World {
         registerBand(ellinia, "blue_snail", 3, 160, 720);
         registerBand(ellinia, "orange_mushroom", 2, 220, 660);
         registerBand(ellinia, "red_snail", 1, 380, 500);
+
+        // 헤네시스 잡화상 NPC. 스폰 지점 근처에 배치해 신규 캐릭터가 쉽게 만난다.
+        henesys.registerNpc(new Npc(
+                npcIdSeq.getAndIncrement(),
+                "잡화상 페트라",
+                160, GROUND_Y,
+                "henesys_general"));
     }
 
     /**

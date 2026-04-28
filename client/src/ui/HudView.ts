@@ -217,6 +217,7 @@ export class HudView {
 
     this.bindWindowDrag('inventory-window', 'inv-pos');
     this.bindWindowDrag('stat-window', 'stat-pos');
+    this.bindWindowDrag('shop-window', 'shop-pos');
 
     // 슬롯 hover 툴팁 (이벤트 위임)
     const grid = document.getElementById('inv-grid');
@@ -387,6 +388,72 @@ export class HudView {
   }
   isStatOpen(): boolean {
     return document.getElementById('stat-window')?.classList.contains('hidden') === false;
+  }
+
+  /**
+   * 상점 창 열기. 카탈로그를 동적 렌더하고 구매 콜백을 바인딩한다.
+   * 같은 창에 여러 NPC 카탈로그가 갈마들 수 있으므로 매번 그리드를 재구성한다.
+   */
+  openShop(
+    shopId: string,
+    npcName: string,
+    items: { itemId: string; price: number; stockPerTransaction: number }[],
+    meso: number,
+    onBuy: (itemId: string, qty: number) => void
+  ): void {
+    const win = document.getElementById('shop-window');
+    if (!win) return;
+    const titleEl = document.getElementById('shop-title');
+    if (titleEl) titleEl.textContent = `${npcName} (${shopId})`;
+    const list = document.getElementById('shop-list');
+    if (!list) return;
+    list.innerHTML = '';
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'shop-row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = ITEM_NAMES[it.itemId] ?? it.itemId;
+      const price = document.createElement('span');
+      price.className = 'price';
+      price.textContent = `${it.price.toLocaleString()} 메소`;
+      const qty = document.createElement('input');
+      qty.className = 'qty';
+      qty.type = 'number';
+      qty.min = '1';
+      qty.max = String(it.stockPerTransaction);
+      qty.value = '1';
+      const buy = document.createElement('button');
+      buy.className = 'buy';
+      buy.type = 'button';
+      buy.textContent = '구매';
+      buy.addEventListener('click', () => {
+        const n = Math.max(1, Math.min(it.stockPerTransaction, parseInt(qty.value, 10) || 1));
+        onBuy(it.itemId, n);
+      });
+      row.append(name, price, qty, buy);
+      list.appendChild(row);
+    }
+    this.updateShopMeso(meso);
+    win.classList.remove('hidden');
+  }
+
+  closeShop(): void {
+    document.getElementById('shop-window')?.classList.add('hidden');
+  }
+
+  isShopOpen(): boolean {
+    return document.getElementById('shop-window')?.classList.contains('hidden') === false;
+  }
+
+  /** SHOP_RESULT 처리. 실패면 오류 토스트는 호출자(GameScene)가 picker 로 띄우고, 메소 갱신만 본 메서드. */
+  handleShopResult(_ok: boolean, _reason: string | null, mesoAfter: number): void {
+    this.updateShopMeso(mesoAfter);
+  }
+
+  private updateShopMeso(meso: number): void {
+    const el = document.getElementById('shop-meso');
+    if (el) el.textContent = `보유: ${meso.toLocaleString()} 메소`;
   }
 
   /**

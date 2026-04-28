@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.IntSupplier;
 import mygame.game.ai.IdleState;
 import mygame.game.entity.Monster;
+import mygame.game.entity.Npc;
 import mygame.game.entity.Player;
 import mygame.game.item.DroppedItem;
 import mygame.network.PacketEnvelope;
@@ -76,6 +77,8 @@ public final class GameMap {
     private final List<SpawnPoint> spawnPoints = new ArrayList<>();
     private final ConcurrentLinkedQueue<PendingRespawn> pendingRespawns = new ConcurrentLinkedQueue<>();
     private final Map<Integer, DroppedItem> items = new ConcurrentHashMap<>();
+    /** 맵 내 NPC. 정적 데이터라 단순 List 로 충분 (수정 빈도 낮음). */
+    private final List<Npc> npcs = new ArrayList<>();
 
     private long sampleAccumulator = 0;
 
@@ -127,6 +130,25 @@ public final class GameMap {
 
     public Monster monster(int id) { return monsters.get(id); }
     public Collection<Monster> monsters() { return monsters.values(); }
+
+    // --- NPC ---
+
+    /** 맵에 NPC 등록. World 초기화에서만 호출되므로 동시성 가드는 불필요. */
+    public void registerNpc(Npc npc) {
+        npcs.add(npc);
+        log.info("맵[{}] NPC 등록: id={}, name={}, shopId={}",
+                id, npc.id(), npc.name(), npc.shopId());
+    }
+
+    public List<Npc> npcs() { return List.copyOf(npcs); }
+
+    /** shopId 로 NPC 조회. 상점 거래 시 거리 검증 등에 사용. */
+    public Npc findNpcByShopId(String shopId) {
+        for (Npc n : npcs) {
+            if (shopId.equals(n.shopId())) return n;
+        }
+        return null;
+    }
 
     // --- 드롭 아이템 ---
 

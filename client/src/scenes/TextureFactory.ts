@@ -9,10 +9,13 @@ import Phaser from 'phaser';
 export const TILESET_NAME = 'tiles';
 export const TILESET_TEXTURE = 'tiles-tex';
 export const PLAYER_TEXTURE = 'player';
+export const NPC_TEXTURE = 'npc';
 export const TILE_SIZE = 20;
 
 const PLAYER_WIDTH = 20;
 const PLAYER_HEIGHT = 32;
+const NPC_WIDTH = 22;
+const NPC_HEIGHT = 36;
 
 export function generateTilesetTexture(scene: Phaser.Scene): void {
   const cols = 4;
@@ -56,5 +59,22 @@ export function generatePlayerTexture(scene: Phaser.Scene): void {
   gfx.fillStyle(0x333333, 1);
   gfx.fillRect(13, 8, 3, 3);
   gfx.generateTexture(PLAYER_TEXTURE, PLAYER_WIDTH, PLAYER_HEIGHT);
+  gfx.destroy();
+}
+
+/** NPC 텍스처: 보라 로브 + 흰 모자 — 플레이어/몬스터와 색상 구분이 명확하도록. */
+export function generateNpcTexture(scene: Phaser.Scene): void {
+  const gfx = scene.add.graphics();
+  // 로브
+  gfx.fillStyle(0x8e44ad, 1);
+  gfx.fillRect(0, 8, NPC_WIDTH, NPC_HEIGHT - 8);
+  // 모자/머리
+  gfx.fillStyle(0xecf0f1, 1);
+  gfx.fillRect(2, 0, NPC_WIDTH - 4, 12);
+  // 눈
+  gfx.fillStyle(0x222222, 1);
+  gfx.fillRect(7, 5, 3, 3);
+  gfx.fillRect(13, 5, 3, 3);
+  gfx.generateTexture(NPC_TEXTURE, NPC_WIDTH, NPC_HEIGHT);
   gfx.destroy();
 }

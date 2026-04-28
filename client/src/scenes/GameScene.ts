@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { AuthedSession } from '../auth/LoginScreen';
 import { DroppedItemSprite } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
+import { NpcSprite } from '../entities/NpcSprite';
 import { RemotePlayer } from '../entities/RemotePlayer';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
 import { ChatController } from '../ui/ChatController';
@@ -11,6 +12,7 @@ import { getItemMeta } from '../data/ItemMeta';
 import { PickupLog } from '../ui/PickupLog';
 import { MapController } from './MapController';
 import {
+  generateNpcTexture,
   generatePlayerTexture,
   generateTilesetTexture,
   PLAYER_TEXTURE
@@ -23,6 +25,8 @@ const MOVE_PACKET_INTERVAL_MS = 100;
 const KNOCKBACK_SPEED_X = 220;
 const KNOCKBACK_VELOCITY_Y = -180;
 const KNOCKBACK_DURATION_MS = 220;
+/** NPC 인터랙션 가능 거리(px). 서버 ShopService.INTERACT_RANGE 와 일치. */
+const NPC_INTERACT_RANGE = 80;
 
 const MAPS = ['henesys', 'ellinia'] as const;
 
@@ -49,6 +53,14 @@ interface DroppedItemMsg {
   y: number;
 }
 
+interface NpcStateMsg {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  shopId: string;
+}
+
 /**
  * Phase D — 다중 맵 + 포털 전환.
  */
@@ -61,6 +73,7 @@ export class GameScene extends Phaser.Scene {
   private inventoryKey!: Phaser.Input.Keyboard.Key;
   private statKey!: Phaser.Input.Keyboard.Key;
   private escKey!: Phaser.Input.Keyboard.Key;
+  private interactKey!: Phaser.Input.Keyboard.Key;
   private skillKeys!: Record<string, Phaser.Input.Keyboard.Key>;
   private myLabel!: Phaser.GameObjects.Text;
   private facing: 'left' | 'right' = 'right';
@@ -71,6 +84,9 @@ export class GameScene extends Phaser.Scene {
   private readonly remotes = new Map<number, RemotePlayer>();
   private readonly monsters = new Map<number, MonsterSprite>();
   private readonly droppedItems = new Map<number, DroppedItemSprite>();
+  private readonly npcs = new Map<number, NpcSprite>();
+  /** 현재 상점 창에 열려있는 shopId. null 이면 닫힘 — 결과 패킷 라우팅에 사용. */
+  private openShopId: string | null = null;
   private lastPickupAttemptAt = 0;
   /** 인벤토리 스냅샷. Q 키로 첫 장비를 찾을 때 참조. */
   private inventoryItems: Record<string, number> = {};
@@ -108,6 +124,7 @@ export class GameScene extends Phaser.Scene {
     }
     generateTilesetTexture(this);
     generatePlayerTexture(this);
+    generateNpcTexture(this);
     // 몬스터 텍스처는 MonsterSprite 가 관리.
     MonsterSprite.generateTexture(this);
   }
@@ -137,6 +154,7 @@ export class GameScene extends Phaser.Scene {
     this.inventoryKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
     this.statKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
     this.skillKeys = {
       power_strike: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       triple_blow: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
@@ -149,6 +167,7 @@ export class GameScene extends Phaser.Scene {
     this.chat.setup();
     document.getElementById('inv-close')?.addEventListener('click', () => this.hud.closeInventory());
     document.getElementById('stat-close')?.addEventListener('click', () => this.hud.closeStat());
+    document.getElementById('shop-close')?.addEventListener('click', () => this.closeShop());
     this.hud.bindInventoryInteractions();
     // 인벤/장비 슬롯의 더블클릭 → 서버 패킷으로 위임.
     this.hud.onInventoryAction((action) => {
@@ -208,6 +227,8 @@ export class GameScene extends Phaser.Scene {
     this.network.on('PLAYER_DIED', (p) => this.onPlayerDied(p));
     this.network.on('PLAYER_RESPAWN', (p) => this.onPlayerRespawn(p));
     this.network.on('PLAYER_CORRECT', (p) => this.onPlayerCorrect(p));
+    this.network.on('SHOP_OPENED', (p) => this.onShopOpened(p));
+    this.network.on('SHOP_RESULT', (p) => this.onShopResult(p));
     this.network.on('ERROR', (p) => {
       const msg = String(p.message ?? '');
       console.warn('[Server ERROR]', msg);
@@ -239,6 +260,8 @@ export class GameScene extends Phaser.Scene {
     for (const m of ms) this.spawnMonster(m);
     const items = (p.items ?? []) as DroppedItemMsg[];
     for (const it of items) this.spawnItem(it);
+    const npcs = (p.npcs ?? []) as NpcStateMsg[];
+    for (const n of npcs) this.spawnNpc(n);
   }
 
   private onPlayerJoin(p: Packet): void {
@@ -290,6 +313,31 @@ export class GameScene extends Phaser.Scene {
     this.droppedItems.clear();
     const items = (p.items ?? []) as DroppedItemMsg[];
     for (const it of items) this.spawnItem(it);
+    for (const n of this.npcs.values()) n.destroy();
+    this.npcs.clear();
+    const npcs = (p.npcs ?? []) as NpcStateMsg[];
+    for (const n of npcs) this.spawnNpc(n);
+  }
+
+  private spawnNpc(n: NpcStateMsg): void {
+    if (this.npcs.has(n.id)) return;
+    this.npcs.set(n.id, new NpcSprite(this, n.id, n.name, n.shopId, n.x, n.y));
+  }
+
+  /** 플레이어 위치 기준 가장 가까운 NPC. INTERACT_RANGE 안에 없으면 null. */
+  private nearestNpc(): NpcSprite | null {
+    let best: NpcSprite | null = null;
+    let bestDist = NPC_INTERACT_RANGE;
+    for (const n of this.npcs.values()) {
+      const dx = n.sprite.x - this.player.x;
+      const dy = n.sprite.y - this.player.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = n;
+      }
+    }
+    return best;
   }
 
   private spawnRemote(ps: PlayerStateMsg): void {
@@ -491,6 +539,26 @@ export class GameScene extends Phaser.Scene {
     this.player.setPosition(x, y);
   }
 
+  private onShopOpened(p: Packet): void {
+    const shopId = p.shopId as string;
+    const npcName = p.npcName as string;
+    const items = (p.items ?? []) as { itemId: string; price: number; stockPerTransaction: number }[];
+    const meso = p.meso as number;
+    this.openShopId = shopId;
+    this.hud.openShop(shopId, npcName, items, meso, (itemId, qty) => {
+      // 구매 버튼 클릭 → 서버 요청. 응답은 onShopResult 에서.
+      this.network.send({ type: 'SHOP_BUY', shopId, itemId, qty });
+    });
+  }
+
+  private onShopResult(p: Packet): void {
+    const ok = p.ok as boolean;
+    const reason = p.reason as string | null;
+    const mesoAfter = p.mesoAfter as number;
+    this.hud.handleShopResult(ok, reason, mesoAfter);
+    if (!ok && reason) this.pickupLog.push('item', `상점: ${reason}`);
+  }
+
   private onSkillUsed(p: Packet): void {
     const playerId = p.playerId as number;
     const skillId = p.skillId as string;
@@ -598,7 +666,26 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
       if (this.hud.isInventoryOpen()) this.hud.closeInventory();
       if (this.hud.isStatOpen()) this.hud.closeStat();
+      if (this.openShopId) this.closeShop();
     }
+
+    // F: 가까운 NPC 와 상호작용 — 첫 단계는 상점 NPC 만.
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey) && this.network.isOpen) {
+      const npc = this.nearestNpc();
+      if (npc) {
+        this.openShopId = npc.shopId;
+        this.network.send({ type: 'SHOP_OPEN', shopId: npc.shopId });
+      }
+    }
+
+    // 매 프레임 가까운 NPC 의 「F: 대화」 힌트 표시.
+    const near = this.nearestNpc();
+    for (const n of this.npcs.values()) n.setNearby(n === near);
+  }
+
+  private closeShop(): void {
+    this.openShopId = null;
+    this.hud.closeShop();
   }
 
   /** 1/2/3 스킬 + HUD 쿨다운 갱신. 쿨다운 예측으로 중복 패킷 방지. */
