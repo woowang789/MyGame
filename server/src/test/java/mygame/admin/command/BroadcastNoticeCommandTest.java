@@ -91,6 +91,7 @@ class BroadcastNoticeCommandTest {
                 List::of,
                 emptyAccountRepo(),
                 emptyPlayerRepo(),
+                mygame.admin.TestRepos.emptyShopRepo(),
                 recordingAudit(auditSink),
                 () -> {},
                 p -> {},

@@ -14,7 +14,11 @@ import mygame.db.AccountRepository;
 import mygame.db.AccountRepository.AccountSummary;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
+import mygame.db.ShopRepository;
+import mygame.db.ShopRepository.ShopSummary;
 import mygame.game.entity.Player;
+import mygame.game.shop.ShopCatalog;
+import mygame.game.shop.ShopRegistry;
 
 /**
  * 백오피스의 도메인 게이트웨이.
@@ -41,6 +45,7 @@ public final class AdminFacade {
     private final Supplier<Collection<Player>> playersSupplier;
     private final AccountRepository accountRepo;
     private final PlayerRepository playerRepo;
+    private final ShopRepository shopRepo;
     private final AuditLogRepository auditRepo;
     /**
      * 강제 저장 액션. 보통 {@code PeriodicSaver::saveAll} 을 가리키지만, 인터페이스 대신
@@ -64,6 +69,7 @@ public final class AdminFacade {
     public AdminFacade(Supplier<Collection<Player>> playersSupplier,
                        AccountRepository accountRepo,
                        PlayerRepository playerRepo,
+                       ShopRepository shopRepo,
                        AuditLogRepository auditRepo,
                        Runnable saveAllAction,
                        Consumer<Player> kickAction,
@@ -71,6 +77,7 @@ public final class AdminFacade {
         this.playersSupplier = playersSupplier;
         this.accountRepo = accountRepo;
         this.playerRepo = playerRepo;
+        this.shopRepo = shopRepo;
         this.auditRepo = auditRepo;
         this.saveAllAction = saveAllAction;
         this.kickAction = kickAction;
@@ -225,6 +232,36 @@ public final class AdminFacade {
      */
     public int broadcastSystemNotice(String message) {
         return noticeBroadcaster.applyAsInt(message);
+    }
+
+    // --- 상점 카탈로그 (Phase 4) ---
+
+    public List<ShopSummary> shopList() {
+        return shopRepo.findAllSummaries();
+    }
+
+    public Optional<ShopCatalog> shopCatalog(String shopId) {
+        return shopRepo.findById(shopId);
+    }
+
+    public Optional<ShopSummary> shopSummary(String shopId) {
+        return shopRepo.findSummary(shopId);
+    }
+
+    /**
+     * 상점 아이템 라인 추가/수정. 영속화 직후 인메모리 캐시를 reload — 다음 SHOP_OPEN 부터
+     * 새 가격이 보인다.
+     */
+    public int upsertShopItem(String shopId, String itemId, long price, int stockPerTx, int sortOrder) {
+        int updated = shopRepo.upsertItem(shopId, itemId, price, stockPerTx, sortOrder);
+        ShopRegistry.reload(shopId);
+        return updated;
+    }
+
+    public int deleteShopItem(String shopId, String itemId) {
+        int deleted = shopRepo.deleteItem(shopId, itemId);
+        ShopRegistry.reload(shopId);
+        return deleted;
     }
 
     /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */

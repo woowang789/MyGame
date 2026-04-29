@@ -82,6 +82,7 @@ public final class GameServer extends WebSocketServer {
     private final Database database;
     private final PlayerRepository playerRepo;
     private final AccountRepository accountRepo;
+    private final mygame.db.ShopRepository shopRepo;
     private final AuthSessions auth;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
     private final SessionNotifier notifier = new SessionNotifier(json);
@@ -110,6 +111,10 @@ public final class GameServer extends WebSocketServer {
         this.database.runMigrations();
         this.playerRepo = new JdbcPlayerRepository(database);
         this.accountRepo = new JdbcAccountRepository(database);
+        this.shopRepo = new mygame.db.JdbcShopRepository(database);
+        // 카탈로그를 인메모리 캐시에 적재. 이후 ShopService/ShopHandler 는 캐시를 본다.
+        // admin 가격 변경 시 ShopRegistry.reload(shopId) 로 즉시 반영.
+        mygame.game.shop.ShopRegistry.bootstrap(this.shopRepo);
         this.auth = new AuthSessions(new AuthService(accountRepo), json);
         this.world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
         this.periodicSaver = new PeriodicSaver(playerRepo,
@@ -238,6 +243,8 @@ public final class GameServer extends WebSocketServer {
     public mygame.db.AccountRepository accountRepo() { return accountRepo; }
 
     public mygame.db.PlayerRepository playerRepo() { return playerRepo; }
+
+    public mygame.db.ShopRepository shopRepo() { return shopRepo; }
 
     public PeriodicSaver periodicSaver() { return periodicSaver; }
 

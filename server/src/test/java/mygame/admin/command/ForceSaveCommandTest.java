@@ -38,6 +38,7 @@ class ForceSaveCommandTest {
                 List::of,           // 접속자 0명 케이스
                 emptyAccountRepo(),
                 emptyPlayerRepo(),
+                mygame.admin.TestRepos.emptyShopRepo(),
                 auditRepo,
                 saveCalls::incrementAndGet,
                 p -> {},

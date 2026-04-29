@@ -120,6 +120,40 @@ public final class Migrations {
             // 백오피스 Phase 2: 계정 정지(ban) 컬럼. AuthService 가 로그인 시 검사.
             new Step(8, "accounts.disabled BOOLEAN (계정 정지)", List.of(
                     "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE"
+            )),
+            // 백오피스 Phase 4: 상점 카탈로그 DB 화. 기존 ShopRegistry 코드 상수가 SSoT 였던 것을
+            // shops/shop_items 테이블로 옮기고, 운영 화면에서 가격·재고를 즉시 편집 가능.
+            new Step(9, "shops + shop_items 테이블", List.of(
+                    """
+                    CREATE TABLE IF NOT EXISTS shops (
+                        id VARCHAR(64) PRIMARY KEY,
+                        name VARCHAR(128) NOT NULL DEFAULT ''
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS shop_items (
+                        shop_id VARCHAR(64) NOT NULL,
+                        item_id VARCHAR(64) NOT NULL,
+                        price BIGINT NOT NULL,
+                        stock_per_tx INT NOT NULL DEFAULT 1,
+                        sort_order INT NOT NULL DEFAULT 0,
+                        PRIMARY KEY (shop_id, item_id),
+                        FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
+                    )
+                    """
+            )),
+            // v9 직후 1회 시드. 기존 ShopRegistry 의 코드 상수와 동일한 값 — 마이그레이션이
+            // 신규 환경에 한 번만 적용되므로 운영 중 실수로 가격이 리셋되는 일은 없다.
+            new Step(10, "henesys_general 상점 시드", List.of(
+                    "INSERT INTO shops (id, name) VALUES ('henesys_general', '잡화상 페트라')",
+                    "INSERT INTO shop_items (shop_id, item_id, price, stock_per_tx, sort_order)"
+                            + " VALUES ('henesys_general', 'red_potion',     50, 50, 0)",
+                    "INSERT INTO shop_items (shop_id, item_id, price, stock_per_tx, sort_order)"
+                            + " VALUES ('henesys_general', 'blue_potion',    80, 50, 1)",
+                    "INSERT INTO shop_items (shop_id, item_id, price, stock_per_tx, sort_order)"
+                            + " VALUES ('henesys_general', 'wooden_sword', 1500,  1, 2)",
+                    "INSERT INTO shop_items (shop_id, item_id, price, stock_per_tx, sort_order)"
+                            + " VALUES ('henesys_general', 'leather_cap',   800,  1, 3)"
             ))
     );
 

@@ -27,6 +27,9 @@ class ShopServiceTest {
 
     @BeforeEach
     void setUp() {
+        // ShopRegistry 가 DB-backed 캐시로 바뀐 뒤로는 테스트가 시작 시점에 부트스트랩을
+        // 명시적으로 해야 한다. TestRepos 가 기존 코드 상수와 동일한 카탈로그로 시드.
+        mygame.admin.TestRepos.bootstrapDefaultShops();
         map = new GameMap("test", 0, 100, new ObjectMapper(), () -> 1);
         // NPC 를 플레이어와 같은 위치에 둬 거리 검증을 통과시킨다.
         map.registerNpc(new Npc(1, NPC_NAME, 0, 0, SHOP));

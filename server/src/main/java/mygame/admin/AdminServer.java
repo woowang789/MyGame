@@ -26,6 +26,10 @@ import mygame.admin.handlers.KickPlayerHandler;
 import mygame.admin.handlers.LoginHandler;
 import mygame.admin.handlers.LogoutHandler;
 import mygame.admin.handlers.ResetPasswordHandler;
+import mygame.admin.handlers.ShopDeleteItemHandler;
+import mygame.admin.handlers.ShopDetailHandler;
+import mygame.admin.handlers.ShopUpsertItemHandler;
+import mygame.admin.handlers.ShopsHandler;
 import mygame.admin.handlers.StaticAssetHandler;
 import mygame.admin.handlers.WidgetsHandler;
 import org.slf4j.Logger;
@@ -93,6 +97,13 @@ public final class AdminServer {
                 new KickPlayerHandler(facade, auditRepo)), authFilter);
         protect(http.createContext("/admin/actions/broadcast",
                 new BroadcastNoticeHandler(facade, auditRepo)), authFilter);
+        // /admin/shops/{id} (detail) 와 /admin/shops (list) — 더 긴 prefix 먼저 등록.
+        protect(http.createContext("/admin/shops/", new ShopDetailHandler(facade)), authFilter);
+        protect(http.createContext("/admin/shops", new ShopsHandler(facade)), authFilter);
+        protect(http.createContext("/admin/actions/shop-upsert-item",
+                new ShopUpsertItemHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/shop-delete-item",
+                new ShopDeleteItemHandler(facade, auditRepo)), authFilter);
     }
 
     private static void protect(HttpContext ctx, AuthFilter filter) {

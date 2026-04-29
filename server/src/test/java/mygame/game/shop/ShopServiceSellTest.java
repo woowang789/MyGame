@@ -26,6 +26,7 @@ class ShopServiceSellTest {
 
     @BeforeEach
     void setUp() {
+        mygame.admin.TestRepos.bootstrapDefaultShops();
         map = new GameMap("test", 0, 100, new ObjectMapper(), () -> 1);
         map.registerNpc(new Npc(1, "테스트상점", 0, 0, SHOP));
         player = new Player(1, 1L, "p", null, "test", 0, 0);

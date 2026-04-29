@@ -205,6 +205,28 @@ section { margin-top: 1.5rem; }
   display: inline-block;
   margin-left: 0.5rem;
 }
+
+.shop-row-form {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.shop-row-form input[type="number"], .shop-row-form input[type="text"] {
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  width: 7rem;
+}
+.shop-row-form input[type="text"] { width: 12rem; }
+.shop-row-form button[type="submit"] {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+.shop-new-row td { background: var(--bg-elev-2); }
 .row-action button[type="submit"] {
   padding: 0.2rem 0.6rem;
   font-size: 0.8rem;
