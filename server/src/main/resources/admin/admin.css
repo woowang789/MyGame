@@ -1,0 +1,139 @@
+/* MyGame Admin — 미니멀 어드민 스타일. 디자인 가이드의 default 템플릿 회피를 위해
+   bento-ish 카드 + 짙은 배경 + 부드러운 보더. */
+:root {
+  --bg: #0f1117;
+  --bg-elev: #161a23;
+  --bg-elev-2: #1d2230;
+  --border: #262b3a;
+  --text: #e2e6ef;
+  --text-muted: #8089a0;
+  --accent: #7aa2ff;
+  --ok: #6ed09a;
+  --error: #ff7a86;
+  --radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+body.bare {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .brand { color: var(--text); font-weight: 700; text-decoration: none; }
+.topbar nav { display: flex; gap: 0.75rem; align-items: center; }
+.topbar nav a { color: var(--text-muted); text-decoration: none; padding: 0.25rem 0.5rem; border-radius: 6px; }
+.topbar nav a:hover { color: var(--text); background: var(--bg-elev-2); }
+.topbar form.logout-form { margin: 0; }
+.topbar button {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+.topbar button:hover { color: var(--text); border-color: var(--accent); }
+
+main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
+h1 { margin: 0 0 1rem; font-size: 1.5rem; }
+h2 { margin: 1.5rem 0 0.75rem; font-size: 1.15rem; color: var(--text-muted); }
+h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+.card div { font-size: 1.5rem; font-weight: 600; }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.data-table th, .data-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.data-table thead th {
+  background: var(--bg-elev-2);
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+.data-table tbody tr:last-child td { border-bottom: 0; }
+
+.pager { margin-top: 1rem; display: flex; gap: 0.5rem; }
+.pager a {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.pager a:hover { color: var(--text); border-color: var(--accent); }
+
+.empty { color: var(--text-muted); }
+.error { color: var(--error); }
+.ok { color: var(--ok); }
+.action-result { min-height: 1.25rem; }
+
+button[type="submit"] {
+  background: var(--accent);
+  color: #0a0d14;
+  border: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button[type="submit"]:hover { filter: brightness(1.1); }
+
+.login-card {
+  width: 320px;
+  padding: 1.75rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+}
+.login-card h1 { margin: 0 0 1rem; font-size: 1.2rem; text-align: center; }
+.login-card form { display: flex; flex-direction: column; gap: 0.65rem; }
+.login-card label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--text-muted); }
+.login-card input {
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.95rem;
+}
+.login-card input:focus { outline: 1px solid var(--accent); }
+.login-card button { margin-top: 0.5rem; }
+
+code { background: var(--bg-elev-2); padding: 0 0.25rem; border-radius: 4px; font-size: 0.8rem; }

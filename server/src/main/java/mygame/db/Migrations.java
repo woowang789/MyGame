@@ -90,6 +90,32 @@ public final class Migrations {
             new Step(5, "HP/MP 영속화 컬럼(-1 sentinel = 풀피 복원)", List.of(
                     "ALTER TABLE players ADD COLUMN IF NOT EXISTS hp INT NOT NULL DEFAULT -1",
                     "ALTER TABLE players ADD COLUMN IF NOT EXISTS mp INT NOT NULL DEFAULT -1"
+            )),
+            // 백오피스(Phase 1) — 관리자 계정과 감사 로그.
+            // 게임 accounts 와 별도 테이블: 권한 결합 사고 차단 + 단일 admin role 만 우선 도입.
+            new Step(6, "백오피스: admin_accounts 테이블", List.of(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_accounts (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        username VARCHAR(64) NOT NULL UNIQUE,
+                        password_hash VARCHAR(256) NOT NULL,
+                        salt VARCHAR(64) NOT NULL,
+                        role VARCHAR(16) NOT NULL DEFAULT 'admin',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+            )),
+            new Step(7, "백오피스: audit_log 테이블 (admin 행위 기록)", List.of(
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        admin_id BIGINT,
+                        admin_username VARCHAR(64),
+                        action VARCHAR(64) NOT NULL,
+                        payload CLOB,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
             ))
     );
 

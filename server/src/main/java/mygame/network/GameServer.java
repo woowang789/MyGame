@@ -230,6 +230,22 @@ public final class GameServer extends WebSocketServer {
      * 서버 정상 종료 직전에 호출. 현재 접속 중인 모든 플레이어 상태를 한 번 더 강제 저장하고
      * 자동 저장 스케줄러를 멈춘다. JVM shutdown hook 또는 테스트에서 직접 호출.
      */
+    // --- 백오피스 접근용 게터 (admin 모듈 한정 — 외부 패키지에서 도메인을 직접
+    // 만지지 않고, AdminFacade 가 이들을 조립한다). 게임 핸들러는 본 게터들을 호출하지 않는다. ---
+
+    public mygame.db.Database database() { return database; }
+
+    public mygame.db.AccountRepository accountRepo() { return accountRepo; }
+
+    public mygame.db.PlayerRepository playerRepo() { return playerRepo; }
+
+    public PeriodicSaver periodicSaver() { return periodicSaver; }
+
+    /** 현재 접속 중인 플레이어 스냅샷(불변 복사). admin 화면 등 외부 관찰자 전용. */
+    public java.util.Collection<mygame.game.entity.Player> onlinePlayersSnapshot() {
+        return java.util.List.copyOf(sessionPlayers.values());
+    }
+
     public void shutdownPersistence() {
         try {
             periodicSaver.saveAll();

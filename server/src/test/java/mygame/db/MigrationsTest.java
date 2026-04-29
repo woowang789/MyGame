@@ -38,7 +38,7 @@ class MigrationsTest {
         Migrations.apply(db);
 
         int version = Migrations.currentVersion(db);
-        assertTrue(version >= 5, "현재 STEPS 마지막 버전이 적용되어야 함 — got " + version);
+        assertTrue(version >= 7, "현재 STEPS 마지막 버전이 적용되어야 함 — got " + version);
 
         // 기대 컬럼이 실제로 존재하는지 확인
         try (Connection conn = db.getConnection();
@@ -48,6 +48,21 @@ class MigrationsTest {
             try (ResultSet rs = ps.executeQuery()) {
                 assertTrue(rs.getMetaData().getColumnCount() == 4);
             }
+        }
+    }
+
+    @Test
+    @DisplayName("백오피스 테이블(v6/v7) 도 같이 적용된다 — admin_accounts, audit_log")
+    void adminTables_created() throws Exception {
+        Migrations.apply(db);
+        try (Connection conn = db.getConnection();
+             var ps1 = conn.prepareStatement(
+                     "SELECT id, username, password_hash, salt, role FROM admin_accounts LIMIT 0");
+             var ps2 = conn.prepareStatement(
+                     "SELECT id, admin_id, admin_username, action, payload FROM audit_log LIMIT 0")) {
+            // 컬럼 모두 존재해야 SELECT 가 성공.
+            assertTrue(ps1.executeQuery().getMetaData().getColumnCount() == 5);
+            assertTrue(ps2.executeQuery().getMetaData().getColumnCount() == 5);
         }
     }
 
