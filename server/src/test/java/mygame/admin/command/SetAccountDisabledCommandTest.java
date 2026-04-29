@@ -32,7 +32,8 @@ class SetAccountDisabledCommandTest {
                 accountRepo(captured, 1),
                 emptyPlayerRepo(),
                 recordingAudit(auditEntries),
-                () -> {});
+                () -> {},
+                p -> {});
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         var cmd = new SetAccountDisabledCommand(facade, 42L, true);
@@ -55,7 +56,8 @@ class SetAccountDisabledCommandTest {
                 accountRepo(captured, 1),
                 emptyPlayerRepo(),
                 recordingAudit(auditEntries),
-                () -> {});
+                () -> {},
+                p -> {});
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         new SetAccountDisabledCommand(facade, 42L, false)
@@ -75,7 +77,8 @@ class SetAccountDisabledCommandTest {
                 accountRepo(captured, 0), // updated 0 반환
                 emptyPlayerRepo(),
                 recordingAudit(auditEntries),
-                () -> {});
+                () -> {},
+                p -> {});
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         String msg = new SetAccountDisabledCommand(facade, 999L, true)

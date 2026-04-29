@@ -35,7 +35,7 @@ class AdminFacadeTest {
                 fakeAccountRepo(0),
                 fakePlayerRepo(),
                 fakeAuditRepo(),
-                noopSave());
+                noopSave(), p -> {});
 
         assertEquals(0, facade.onlineCount());
         assertEquals(List.of(), facade.onlineSnapshot(50));
@@ -59,7 +59,7 @@ class AdminFacadeTest {
             @Override public int setDisabled(long id, boolean d) { return 1; }
             @Override public int updatePassword(long id, String hash, String salt) { return 1; }
         };
-        var facade = new AdminFacade(List::of, repo, fakePlayerRepo(), fakeAuditRepo(), noopSave());
+        var facade = new AdminFacade(List::of, repo, fakePlayerRepo(), fakeAuditRepo(), noopSave(), p -> {});
 
         var page = facade.accountsPage(0, 20);
         assertEquals(1, counter.get(), "findPage 가 정확히 1회 호출돼야 함");
@@ -72,7 +72,7 @@ class AdminFacadeTest {
     void forceSave_delegates() {
         var calls = new AtomicInteger(0);
         var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), fakeAuditRepo(),
-                () -> calls.incrementAndGet());
+                () -> calls.incrementAndGet(), p -> {});
 
         facade.forceSaveAll();
         assertEquals(1, calls.get());
@@ -99,7 +99,7 @@ class AdminFacadeTest {
                 throw new UnsupportedOperationException();
             }
         };
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), playerRepo, fakeAuditRepo(), noopSave());
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), playerRepo, fakeAuditRepo(), noopSave(), p -> {});
         var detail = facade.playerDetailByAccount(42L);
         assertTrue(detail.isPresent());
         assertEquals("alice-char", detail.get().name());
@@ -123,7 +123,7 @@ class AdminFacadeTest {
     @Test
     @DisplayName("stats 는 양수 heap/uptime 을 보고하고 onlineCount 를 함께 노출")
     void stats_shape() {
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), fakeAuditRepo(), noopSave());
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), fakeAuditRepo(), noopSave(), p -> {});
         var stats = facade.stats();
         assertTrue(stats.heapUsedMb() >= 0);
         assertTrue(stats.heapMaxMb() >= stats.heapUsedMb());

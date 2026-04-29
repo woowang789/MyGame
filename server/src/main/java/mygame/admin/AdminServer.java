@@ -21,6 +21,7 @@ import mygame.admin.handlers.AdjustPlayerHandler;
 import mygame.admin.handlers.AuditHandler;
 import mygame.admin.handlers.DashboardHandler;
 import mygame.admin.handlers.ForceSaveHandler;
+import mygame.admin.handlers.KickPlayerHandler;
 import mygame.admin.handlers.LoginHandler;
 import mygame.admin.handlers.LogoutHandler;
 import mygame.admin.handlers.ResetPasswordHandler;
@@ -87,6 +88,8 @@ public final class AdminServer {
                 new AdjustPlayerHandler(facade, auditRepo)), authFilter);
         protect(http.createContext("/admin/actions/reset-password",
                 new ResetPasswordHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/kick-player",
+                new KickPlayerHandler(facade, auditRepo)), authFilter);
     }
 
     private static void protect(HttpContext ctx, AuthFilter filter) {

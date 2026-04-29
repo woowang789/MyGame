@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.auth.PasswordHasher;
@@ -46,18 +47,26 @@ public final class AdminFacade {
      * (테스트에서 가짜 액션 주입 가능).
      */
     private final Runnable saveAllAction;
+    /**
+     * 킥 액션. 보통 {@code p -> p.connection().close()} 를 가리킨다 — Java-WebSocket 의
+     * onClose 가 발화돼 GameServer 가 평소 disconnect 경로(저장·맵 broadcast)를 그대로 탄다.
+     * Consumer 로 추상화한 이유: admin 모듈이 WebSocket 타입에 직접 의존하지 않게 + 테스트.
+     */
+    private final Consumer<Player> kickAction;
     private final long startedAtMillis;
 
     public AdminFacade(Supplier<Collection<Player>> playersSupplier,
                        AccountRepository accountRepo,
                        PlayerRepository playerRepo,
                        AuditLogRepository auditRepo,
-                       Runnable saveAllAction) {
+                       Runnable saveAllAction,
+                       Consumer<Player> kickAction) {
         this.playersSupplier = playersSupplier;
         this.accountRepo = accountRepo;
         this.playerRepo = playerRepo;
         this.auditRepo = auditRepo;
         this.saveAllAction = saveAllAction;
+        this.kickAction = kickAction;
         this.startedAtMillis = System.currentTimeMillis();
     }
 
@@ -173,6 +182,32 @@ public final class AdminFacade {
     public int resetPassword(long accountId, String newRawPassword) {
         Hashed h = PasswordHasher.hash(newRawPassword);
         return accountRepo.updatePassword(accountId, h.hash(), h.salt());
+    }
+
+    /**
+     * 킥 결과. NO_PLAYER = 계정에 캐릭터 자체가 없음 / NOT_ONLINE = 캐릭터는 있지만 미접속 /
+     * KICKED = 인메모리 Player 의 WebSocket close 호출 완료(서버 onClose 가 곧 발화).
+     */
+    public record KickResult(State state, String playerName) {
+        public enum State { NO_PLAYER, NOT_ONLINE, KICKED }
+        public static KickResult noPlayer() { return new KickResult(State.NO_PLAYER, null); }
+        public static KickResult notOnline(String name) { return new KickResult(State.NOT_ONLINE, name); }
+        public static KickResult kicked(String name) { return new KickResult(State.KICKED, name); }
+    }
+
+    /**
+     * 접속 중 플레이어를 강제로 끊는다. WS close 가 trigger 되면 GameServer 의 onClose 가
+     * 평소 disconnect 경로(맵 broadcast + DB save) 를 그대로 탄다 — 즉, admin 측이 별도
+     * 영속화/정리 코드를 중복하지 않는다는 점이 본 디자인의 핵심.
+     */
+    public KickResult kickPlayer(long accountId) {
+        var data = playerRepo.findByAccountId(accountId);
+        if (data.isEmpty()) return KickResult.noPlayer();
+        var snapshot = data.get();
+        Player online = findOnlinePlayerByDbId(snapshot.id());
+        if (online == null) return KickResult.notOnline(snapshot.name());
+        kickAction.accept(online);
+        return KickResult.kicked(online.name());
     }
 
     /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */

@@ -102,6 +102,12 @@ public final class AccountDetailHandler implements HttpHandler {
           .append("<p id=\"reset-result\" class=\"action-result\"></p>")
           .append("</section>");
 
+        sb.append("<section><h2>라이브 세션</h2>")
+          .append("<p class=\"empty\">킥은 접속 중인 플레이어의 WS 연결을 즉시 끊는다. 게임 서버의 onClose 핸들러가 평소 disconnect 경로(맵 broadcast + 자동 저장) 를 그대로 탄다.</p>")
+          .append(kickForm(account.id(), account.username()))
+          .append("<p id=\"kick-result\" class=\"action-result\"></p>")
+          .append("</section>");
+
         sb.append("<section><h2>인벤토리</h2>");
         if (p.items().isEmpty()) {
             sb.append("<p class=\"empty\">비어있음</p>");
@@ -133,6 +139,19 @@ public final class AccountDetailHandler implements HttpHandler {
 
     private static String row(String key, String value) {
         return "<tr><th>" + Html.esc(key) + "</th><td>" + value + "</td></tr>";
+    }
+
+    /**
+     * 킥 폼. 접속 중이지 않으면 명령이 NOT_ONLINE 응답을 돌려주므로 화면에서 항상 노출해도
+     * 안전하다 — 운영자가 클릭 후 즉시 피드백을 받는 단순 흐름.
+     */
+    private static String kickForm(long accountId, String username) {
+        return "<form hx-post=\"/admin/actions/kick-player\" hx-target=\"#kick-result\" "
+                + "hx-swap=\"innerHTML\" class=\"adjust-form\" "
+                + "hx-confirm=\"" + Html.esc(username) + " 의 게임 세션을 즉시 끊습니다. 진행할까요?\">"
+                + "<input type=\"hidden\" name=\"accountId\" value=\"" + accountId + "\">"
+                + "<button type=\"submit\">킥</button>"
+                + "</form>";
     }
 
     /**
