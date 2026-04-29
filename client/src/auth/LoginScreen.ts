@@ -23,10 +23,18 @@ export function showLogin(network: WebSocketClient): Promise<AuthedSession> {
 
   return new Promise<AuthedSession>((resolve) => {
     let awaiting: 'login' | 'register' | null = null;
+    /** 연결 시도 중 중복 클릭 방지 — 버튼 disable 과 함께 사용. */
+    let connecting = false;
 
     const setMsg = (text: string, ok = false) => {
       msg.textContent = text;
       msg.className = ok ? 'ok' : '';
+    };
+
+    const setBusy = (busy: boolean) => {
+      connecting = busy;
+      loginBtn.disabled = busy;
+      registerBtn.disabled = busy;
     };
 
     network.on('AUTH', (p: Packet) => {
@@ -60,13 +68,28 @@ export function showLogin(network: WebSocketClient): Promise<AuthedSession> {
       awaiting = null;
     });
 
-    const submit = (kind: 'login' | 'register') => {
+    const submit = async (kind: 'login' | 'register') => {
+      if (connecting) return;
       const username = usernameInput.value.trim();
       const password = passwordInput.value;
       if (!username || !password) {
         setMsg('아이디/비밀번호를 입력하세요.');
         return;
       }
+      // 1) 서버 연결 보장. 페이지 로드 후 처음이거나 이전 연결이 끊겼으면 새로 연결.
+      if (!network.isOpen) {
+        setMsg('서버에 연결 중...', true);
+        setBusy(true);
+        try {
+          await network.ensureOpen();
+        } catch {
+          setMsg('서버에 연결할 수 없습니다. 서버 상태를 확인 후 다시 시도해 주세요.');
+          setBusy(false);
+          return;
+        }
+        setBusy(false);
+      }
+      // 2) 인증 패킷 송신
       awaiting = kind;
       setMsg(kind === 'login' ? '로그인 중...' : '회원가입 중...', true);
       network.send({
@@ -76,14 +99,18 @@ export function showLogin(network: WebSocketClient): Promise<AuthedSession> {
       });
     };
 
-    loginBtn.addEventListener('click', () => submit('login'));
-    registerBtn.addEventListener('click', () => submit('register'));
+    loginBtn.addEventListener('click', () => {
+      void submit('login');
+    });
+    registerBtn.addEventListener('click', () => {
+      void submit('register');
+    });
     // Enter 키로 로그인 제출
     for (const input of [usernameInput, passwordInput]) {
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          submit('login');
+          void submit('login');
         }
       });
     }
