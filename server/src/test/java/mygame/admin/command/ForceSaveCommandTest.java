@@ -12,6 +12,8 @@ import mygame.admin.AdminFacade;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.admin.auth.AdminAuth.Session;
 import mygame.db.AccountRepository;
+import mygame.db.PlayerRepository;
+import mygame.db.PlayerRepository.PlayerData;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +37,7 @@ class ForceSaveCommandTest {
         var facade = new AdminFacade(
                 List::of,           // 접속자 0명 케이스
                 emptyAccountRepo(),
+                emptyPlayerRepo(),
                 auditRepo,
                 saveCalls::incrementAndGet);
 
@@ -57,12 +60,26 @@ class ForceSaveCommandTest {
     private static AccountRepository emptyAccountRepo() {
         return new AccountRepository() {
             @Override public Optional<Account> findByUsername(String username) { return Optional.empty(); }
+            @Override public Optional<AccountSummary> findById(long id) { return Optional.empty(); }
             @Override public Account create(String u, String h, String s) {
                 throw new UnsupportedOperationException();
             }
             @Override public List<AccountSummary> findPage(int offset, int limit) { return List.of(); }
             @Override public long count() { return 0; }
             @Override public int setDisabled(long id, boolean d) { return 1; }
+        };
+    }
+
+    private static PlayerRepository emptyPlayerRepo() {
+        return new PlayerRepository() {
+            @Override public Optional<PlayerData> findByName(String name) { return Optional.empty(); }
+            @Override public Optional<PlayerData> findByAccountId(long accountId) { return Optional.empty(); }
+            @Override public PlayerData create(String name, long accountId) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public void save(long id, int level, int exp, long meso, int hp, int mp,
+                                       java.util.Map<String, Integer> items,
+                                       java.util.Map<String, String> equipment) {}
         };
     }
 

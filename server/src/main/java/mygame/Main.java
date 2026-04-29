@@ -45,6 +45,7 @@ public final class Main {
         var facade = new AdminFacade(
                 server::onlinePlayersSnapshot,
                 server.accountRepo(),
+                server.playerRepo(),
                 auditRepo,
                 server.periodicSaver()::saveAll);
         AdminServer adminServer = new AdminServer(adminPort, facade, adminAuth, auditRepo);

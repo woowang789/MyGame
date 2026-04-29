@@ -3,10 +3,13 @@ package mygame.admin;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.db.AccountRepository;
 import mygame.db.AccountRepository.AccountSummary;
+import mygame.db.PlayerRepository;
+import mygame.db.PlayerRepository.PlayerData;
 import mygame.game.entity.Player;
 
 /**
@@ -33,6 +36,7 @@ public final class AdminFacade {
 
     private final Supplier<Collection<Player>> playersSupplier;
     private final AccountRepository accountRepo;
+    private final PlayerRepository playerRepo;
     private final AuditLogRepository auditRepo;
     /**
      * 강제 저장 액션. 보통 {@code PeriodicSaver::saveAll} 을 가리키지만, 인터페이스 대신
@@ -44,10 +48,12 @@ public final class AdminFacade {
 
     public AdminFacade(Supplier<Collection<Player>> playersSupplier,
                        AccountRepository accountRepo,
+                       PlayerRepository playerRepo,
                        AuditLogRepository auditRepo,
                        Runnable saveAllAction) {
         this.playersSupplier = playersSupplier;
         this.accountRepo = accountRepo;
+        this.playerRepo = playerRepo;
         this.auditRepo = auditRepo;
         this.saveAllAction = saveAllAction;
         this.startedAtMillis = System.currentTimeMillis();
@@ -71,6 +77,22 @@ public final class AdminFacade {
 
     public List<AccountSummary> accountsPage(int offset, int limit) {
         return accountRepo.findPage(offset, limit);
+    }
+
+    /**
+     * 계정 1건과 그에 연결된 플레이어(존재하면) 의 영속화 스냅샷을 함께 돌려준다.
+     *
+     * <p>주의: 라이브 상태가 아닌 <em>DB 스냅샷</em> 이다 — 접속 중 플레이어의 인메모리
+     * 변경(전투 중 HP 등)은 다음 자동 저장 사이클까지 반영되지 않는다. 운영 화면에는
+     * "최근 저장 시점 기준" 임을 명시해야 한다.
+     */
+    public Optional<PlayerData> playerDetailByAccount(long accountId) {
+        return playerRepo.findByAccountId(accountId);
+    }
+
+    /** 페이지네이션을 거치지 않고 단일 계정만 조회 — 상세 페이지의 헤더용. */
+    public Optional<AccountSummary> accountById(long accountId) {
+        return accountRepo.findById(accountId);
     }
 
     public long accountCount() {

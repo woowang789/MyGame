@@ -77,6 +77,11 @@ class AuthServiceTest {
             Long id = idByName.get(username);
             return id == null ? Optional.empty() : Optional.ofNullable(byId.get(id));
         }
+        @Override public Optional<AccountSummary> findById(long accountId) {
+            Account a = byId.get(accountId);
+            if (a == null) return Optional.empty();
+            return Optional.of(new AccountSummary(a.id(), a.username(), null, a.disabled()));
+        }
         @Override public Account create(String username, String passwordHash, String salt) {
             long id = seq.getAndIncrement();
             Account a = new Account(id, username, passwordHash, salt, false);

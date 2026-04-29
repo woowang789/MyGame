@@ -14,6 +14,7 @@ import mygame.admin.auth.AdminAuth;
 import mygame.admin.command.AdminCommand;
 import mygame.admin.command.ForceSaveCommand;
 import mygame.admin.filter.AuthFilter;
+import mygame.admin.handlers.AccountDetailHandler;
 import mygame.admin.handlers.AccountDisabledHandler;
 import mygame.admin.handlers.AccountsHandler;
 import mygame.admin.handlers.AuditHandler;
@@ -71,6 +72,9 @@ public final class AdminServer {
         AuthFilter authFilter = new AuthFilter(auth);
         protect(http.createContext("/admin", new DashboardHandler(facade)), authFilter);
         protect(http.createContext("/admin/widgets/", new WidgetsHandler(facade)), authFilter);
+        // /admin/accounts/{id} 와 /admin/accounts 충돌 회피: HttpContext 는 prefix 매치라
+        // 더 긴 경로(/admin/accounts/) 를 먼저 등록해야 detail 핸들러가 우선 매치된다.
+        protect(http.createContext("/admin/accounts/", new AccountDetailHandler(facade)), authFilter);
         protect(http.createContext("/admin/accounts", new AccountsHandler(facade)), authFilter);
         protect(http.createContext("/admin/audit", new AuditHandler(facade)), authFilter);
         protect(http.createContext("/admin/actions/force-save",

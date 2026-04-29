@@ -73,7 +73,8 @@ public final class AccountsHandler implements HttpHandler {
         StringBuilder sb = new StringBuilder();
         sb.append("<tr id=\"acc-row-").append(a.id()).append("\">")
           .append("<td>").append(a.id()).append("</td>")
-          .append("<td>").append(Html.esc(a.username())).append("</td>")
+          .append("<td><a href=\"/admin/accounts/").append(a.id()).append("\">")
+          .append(Html.esc(a.username())).append("</a></td>")
           .append("<td>").append(createdAt).append("</td>")
           .append("<td>").append(stateBadge).append(" ")
           .append("<form hx-post=\"/admin/actions/account-disabled\" ")

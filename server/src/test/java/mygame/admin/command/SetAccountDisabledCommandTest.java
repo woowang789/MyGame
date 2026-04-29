@@ -12,6 +12,8 @@ import mygame.admin.AdminFacade;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.admin.auth.AdminAuth.Session;
 import mygame.db.AccountRepository;
+import mygame.db.PlayerRepository;
+import mygame.db.PlayerRepository.PlayerData;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +30,7 @@ class SetAccountDisabledCommandTest {
         var facade = new AdminFacade(
                 List::of,
                 accountRepo(captured, 1),
+                emptyPlayerRepo(),
                 recordingAudit(auditEntries),
                 () -> {});
 
@@ -50,6 +53,7 @@ class SetAccountDisabledCommandTest {
         var facade = new AdminFacade(
                 List::of,
                 accountRepo(captured, 1),
+                emptyPlayerRepo(),
                 recordingAudit(auditEntries),
                 () -> {});
 
@@ -69,6 +73,7 @@ class SetAccountDisabledCommandTest {
         var facade = new AdminFacade(
                 List::of,
                 accountRepo(captured, 0), // updated 0 반환
+                emptyPlayerRepo(),
                 recordingAudit(auditEntries),
                 () -> {});
 
@@ -84,6 +89,7 @@ class SetAccountDisabledCommandTest {
     private static AccountRepository accountRepo(AtomicReference<Boolean> captured, int updateResult) {
         return new AccountRepository() {
             @Override public Optional<Account> findByUsername(String username) { return Optional.empty(); }
+            @Override public Optional<AccountSummary> findById(long id) { return Optional.empty(); }
             @Override public Account create(String u, String h, String s) {
                 throw new UnsupportedOperationException();
             }
@@ -93,6 +99,19 @@ class SetAccountDisabledCommandTest {
                 captured.set(d);
                 return updateResult;
             }
+        };
+    }
+
+    private static PlayerRepository emptyPlayerRepo() {
+        return new PlayerRepository() {
+            @Override public Optional<PlayerData> findByName(String name) { return Optional.empty(); }
+            @Override public Optional<PlayerData> findByAccountId(long accountId) { return Optional.empty(); }
+            @Override public PlayerData create(String name, long accountId) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public void save(long id, int level, int exp, long meso, int hp, int mp,
+                                       java.util.Map<String, Integer> items,
+                                       java.util.Map<String, String> equipment) {}
         };
     }
 

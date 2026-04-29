@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import mygame.admin.AdminFacade.OnlinePlayerView;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.db.AccountRepository;
+import mygame.db.PlayerRepository;
+import mygame.db.PlayerRepository.PlayerData;
 import mygame.game.entity.Player;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,7 @@ class AdminFacadeTest {
         var facade = new AdminFacade(
                 List::of,
                 fakeAccountRepo(0),
+                fakePlayerRepo(),
                 fakeAuditRepo(),
                 noopSave());
 
@@ -44,6 +47,7 @@ class AdminFacadeTest {
         var counter = new AtomicInteger(0);
         var repo = new AccountRepository() {
             @Override public Optional<Account> findByUsername(String username) { return Optional.empty(); }
+            @Override public Optional<AccountSummary> findById(long id) { return Optional.empty(); }
             @Override public Account create(String u, String h, String s) {
                 throw new UnsupportedOperationException();
             }
@@ -54,7 +58,7 @@ class AdminFacadeTest {
             @Override public long count() { return 42; }
             @Override public int setDisabled(long id, boolean d) { return 1; }
         };
-        var facade = new AdminFacade(List::of, repo, fakeAuditRepo(), noopSave());
+        var facade = new AdminFacade(List::of, repo, fakePlayerRepo(), fakeAuditRepo(), noopSave());
 
         var page = facade.accountsPage(0, 20);
         assertEquals(1, counter.get(), "findPage 가 정확히 1회 호출돼야 함");
@@ -66,7 +70,7 @@ class AdminFacadeTest {
     @DisplayName("forceSaveAll 은 주입된 saveAction 을 정확히 1회 호출")
     void forceSave_delegates() {
         var calls = new AtomicInteger(0);
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakeAuditRepo(),
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), fakeAuditRepo(),
                 () -> calls.incrementAndGet());
 
         facade.forceSaveAll();
@@ -74,9 +78,51 @@ class AdminFacadeTest {
     }
 
     @Test
+    @DisplayName("playerDetailByAccount 는 PlayerRepository 를 한 번만 호출하고 결과를 그대로 노출")
+    void playerDetail_delegates() {
+        var captured = new AtomicInteger(0);
+        var playerRepo = new PlayerRepository() {
+            @Override public Optional<PlayerData> findByName(String name) { return Optional.empty(); }
+            @Override public Optional<PlayerData> findByAccountId(long accountId) {
+                captured.incrementAndGet();
+                return Optional.of(new PlayerData(7L, "alice-char", 12, 3400, 999L, 50, 30,
+                        java.util.Map.of("snail_shell", 3),
+                        java.util.Map.of("WEAPON", "sword_basic")));
+            }
+            @Override public PlayerData create(String name, long accountId) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public void save(long id, int level, int exp, long meso, int hp, int mp,
+                                       java.util.Map<String, Integer> items,
+                                       java.util.Map<String, String> equipment) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), playerRepo, fakeAuditRepo(), noopSave());
+        var detail = facade.playerDetailByAccount(42L);
+        assertTrue(detail.isPresent());
+        assertEquals("alice-char", detail.get().name());
+        assertEquals(1, captured.get());
+    }
+
+    /** 모든 메서드 미구현 가짜 — playerDetail 미관여 테스트 케이스에서 사용. */
+    private static PlayerRepository fakePlayerRepo() {
+        return new PlayerRepository() {
+            @Override public Optional<PlayerData> findByName(String name) { return Optional.empty(); }
+            @Override public Optional<PlayerData> findByAccountId(long accountId) { return Optional.empty(); }
+            @Override public PlayerData create(String name, long accountId) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public void save(long id, int level, int exp, long meso, int hp, int mp,
+                                       java.util.Map<String, Integer> items,
+                                       java.util.Map<String, String> equipment) {}
+        };
+    }
+
+    @Test
     @DisplayName("stats 는 양수 heap/uptime 을 보고하고 onlineCount 를 함께 노출")
     void stats_shape() {
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakeAuditRepo(), noopSave());
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), fakeAuditRepo(), noopSave());
         var stats = facade.stats();
         assertTrue(stats.heapUsedMb() >= 0);
         assertTrue(stats.heapMaxMb() >= stats.heapUsedMb());
@@ -89,6 +135,7 @@ class AdminFacadeTest {
     private static AccountRepository fakeAccountRepo(long total) {
         return new AccountRepository() {
             @Override public Optional<Account> findByUsername(String username) { return Optional.empty(); }
+            @Override public Optional<AccountSummary> findById(long id) { return Optional.empty(); }
             @Override public Account create(String u, String h, String s) {
                 throw new UnsupportedOperationException();
             }

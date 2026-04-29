@@ -20,6 +20,9 @@ public interface AccountRepository {
 
     Optional<Account> findByUsername(String username);
 
+    /** id 기준 조회. 백오피스 상세 페이지 등에서 사용. */
+    Optional<AccountSummary> findById(long accountId);
+
     /** 비밀번호는 호출자가 사전에 해시해서 전달한다. 저장소는 해시만 저장. */
     Account create(String username, String passwordHash, String salt);
 
