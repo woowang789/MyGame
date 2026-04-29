@@ -110,6 +110,31 @@ public final class Player {
 
     /** DB 복원 시 사용. 유효성 검증은 Repository 계층이 담당. */
     public void restoreMeso(long amount) { this.meso = Math.max(0, amount); }
+
+    /**
+     * 운영자(admin) 가 메소를 보정. 양수/음수 모두 허용. 결과는 0 이하로 떨어지지 않도록
+     * 클램프. {@code addMeso} / {@code spendMeso} 와 다르게 부족분에 대해 false 를 돌려주지
+     * 않고 강제로 0 으로 깎는다 — 음수 페널티 시나리오를 admin 측에서 의도적으로 사용.
+     *
+     * @return 적용 후의 새 메소 잔고
+     */
+    public synchronized long adjustMeso(long delta) {
+        long next = meso + delta;
+        meso = Math.max(0, next);
+        return meso;
+    }
+
+    /**
+     * 운영자(admin) 가 EXP 를 보정. 양수/음수 모두 허용. 0 이하로 클램프.
+     *
+     * <p>의도적으로 자동 레벨업 cascade 를 트리거하지 않는다 — 보상/페널티 의미를 명확히
+     * 하고, 레벨 변경이 필요한 경우는 별도 명령으로 다루는 게 사고 위험이 작기 때문.
+     */
+    public synchronized int adjustExp(int delta) {
+        int next = exp + delta;
+        exp = Math.max(0, next);
+        return exp;
+    }
     public boolean isDead() { return hp <= 0; }
     public boolean isInvulnerable(long now) { return now < invulnerableUntil; }
     public Inventory inventory() { return inventory; }

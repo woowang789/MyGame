@@ -17,6 +17,7 @@ import mygame.admin.filter.AuthFilter;
 import mygame.admin.handlers.AccountDetailHandler;
 import mygame.admin.handlers.AccountDisabledHandler;
 import mygame.admin.handlers.AccountsHandler;
+import mygame.admin.handlers.AdjustPlayerHandler;
 import mygame.admin.handlers.AuditHandler;
 import mygame.admin.handlers.DashboardHandler;
 import mygame.admin.handlers.ForceSaveHandler;
@@ -81,6 +82,8 @@ public final class AdminServer {
                 new ForceSaveHandler(forceSave, auditRepo)), authFilter);
         protect(http.createContext("/admin/actions/account-disabled",
                 new AccountDisabledHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/adjust-player",
+                new AdjustPlayerHandler(facade, auditRepo)), authFilter);
     }
 
     private static void protect(HttpContext ctx, AuthFilter filter) {

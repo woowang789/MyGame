@@ -95,6 +95,71 @@ public final class AdminFacade {
         return accountRepo.findById(accountId);
     }
 
+    /**
+     * 운영자 보정 결과. {@code playerExists=false} 면 해당 계정에 캐릭터 자체가 없는 것이고,
+     * {@code wasOnline=true} 면 인메모리 Player 에 직접 적용 — 다음 자동 저장 사이클에 DB 반영.
+     * {@code wasOnline=false} 면 DB 를 즉시 갱신.
+     */
+    public record AdjustResult(boolean playerExists, boolean wasOnline, long newValue) {
+        public static AdjustResult noPlayer() { return new AdjustResult(false, false, 0); }
+        public static AdjustResult online(long v) { return new AdjustResult(true, true, v); }
+        public static AdjustResult offline(long v) { return new AdjustResult(true, false, v); }
+    }
+
+    /**
+     * 메소 조정. delta 는 양수/음수 가능. 0 이하로 클램프.
+     *
+     * <p>온라인/오프라인 분기:
+     * <ul>
+     *   <li>접속 중이면 인메모리 Player 객체를 직접 mutate — 다음 자동 저장 사이클에 DB 반영.
+     *   <li>접속 중이 아니면 DB 를 즉시 갱신.
+     * </ul>
+     *
+     * <p>경계 race: 본 메서드가 "오프라인" 으로 판단해 DB 에 쓰는 동안 사용자가 로그인하면,
+     * JOIN 핸들러가 같은 행을 읽어 인메모리 사본을 만든 직후 다음 autosave 가 admin 쓰기를
+     * 덮어쓸 수 있다. 학습 단계에선 빈도가 매우 낮아 별도 락을 두지 않는다 — 발생하면 admin
+     * 이 한 번 더 누르면 된다. 프로덕션에서는 single-writer 큐 또는 행 잠금이 필요.
+     */
+    public AdjustResult adjustMeso(long accountId, long delta) {
+        var data = playerRepo.findByAccountId(accountId);
+        if (data.isEmpty()) return AdjustResult.noPlayer();
+        var snapshot = data.get();
+        Player online = findOnlinePlayerByDbId(snapshot.id());
+        if (online != null) {
+            return AdjustResult.online(online.adjustMeso(delta));
+        }
+        long newMeso = Math.max(0, snapshot.meso() + delta);
+        playerRepo.save(snapshot.id(), snapshot.level(), snapshot.exp(), newMeso,
+                snapshot.hp(), snapshot.mp(), snapshot.items(), snapshot.equipment());
+        return AdjustResult.offline(newMeso);
+    }
+
+    /**
+     * EXP 조정. 의도적으로 레벨업 cascade 를 트리거하지 않는다 — 보상/페널티 의미를 명확히
+     * 하기 위함. 레벨 자체를 만지는 것은 별도 명령(out of scope).
+     */
+    public AdjustResult adjustExp(long accountId, int delta) {
+        var data = playerRepo.findByAccountId(accountId);
+        if (data.isEmpty()) return AdjustResult.noPlayer();
+        var snapshot = data.get();
+        Player online = findOnlinePlayerByDbId(snapshot.id());
+        if (online != null) {
+            return AdjustResult.online(online.adjustExp(delta));
+        }
+        int newExp = Math.max(0, snapshot.exp() + delta);
+        playerRepo.save(snapshot.id(), snapshot.level(), newExp, snapshot.meso(),
+                snapshot.hp(), snapshot.mp(), snapshot.items(), snapshot.equipment());
+        return AdjustResult.offline(newExp);
+    }
+
+    /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */
+    private Player findOnlinePlayerByDbId(long playerDbId) {
+        for (Player p : playersSupplier.get()) {
+            if (p.dbId() == playerDbId) return p;
+        }
+        return null;
+    }
+
     public long accountCount() {
         return accountRepo.count();
     }

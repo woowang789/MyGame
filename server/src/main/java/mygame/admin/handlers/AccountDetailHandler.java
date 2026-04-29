@@ -89,6 +89,13 @@ public final class AccountDetailHandler implements HttpHandler {
           .append(row("메소", String.format("%,d", p.meso())))
           .append("</tbody></table></section>");
 
+        sb.append("<section><h2>운영자 조정</h2>")
+          .append("<p class=\"empty\">delta 입력 후 적용. 양수=지급, 음수=차감.</p>")
+          .append(adjustForm(account.id(), "MESO", "메소"))
+          .append(adjustForm(account.id(), "EXP", "EXP"))
+          .append("<p id=\"adjust-result\" class=\"action-result\"></p>")
+          .append("</section>");
+
         sb.append("<section><h2>인벤토리</h2>");
         if (p.items().isEmpty()) {
             sb.append("<p class=\"empty\">비어있음</p>");
@@ -120,6 +127,23 @@ public final class AccountDetailHandler implements HttpHandler {
 
     private static String row(String key, String value) {
         return "<tr><th>" + Html.esc(key) + "</th><td>" + value + "</td></tr>";
+    }
+
+    /**
+     * 한 종류(meso/exp)에 대한 delta 입력 폼. 결과는 같은 result span 으로 swap 되어
+     * 운영자가 메소/EXP 를 번갈아 적용해도 마지막 결과가 누적 표시되지 않고 갱신된다.
+     */
+    private static String adjustForm(long accountId, String kind, String label) {
+        return "<form hx-post=\"/admin/actions/adjust-player\" hx-target=\"#adjust-result\" "
+                + "hx-swap=\"innerHTML\" class=\"adjust-form\" "
+                + "hx-confirm=\"" + Html.esc(label) + " 보정을 적용합니다. 진행할까요?\">"
+                + "<input type=\"hidden\" name=\"accountId\" value=\"" + accountId + "\">"
+                + "<input type=\"hidden\" name=\"kind\" value=\"" + kind + "\">"
+                + "<label>" + Html.esc(label) + " delta "
+                + "<input type=\"number\" name=\"delta\" required step=\"1\" placeholder=\"예: 1000 또는 -500\">"
+                + "</label>"
+                + "<button type=\"submit\">적용</button>"
+                + "</form>";
     }
 
     /** -1 sentinel 은 "다음 로드 시 풀피 복원" — 사용자에게는 "최대" 로 표기. */
