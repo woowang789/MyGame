@@ -67,6 +67,7 @@ class ForceSaveCommandTest {
             @Override public List<AccountSummary> findPage(int offset, int limit) { return List.of(); }
             @Override public long count() { return 0; }
             @Override public int setDisabled(long id, boolean d) { return 1; }
+            @Override public int updatePassword(long id, String hash, String salt) { return 1; }
         };
     }
 

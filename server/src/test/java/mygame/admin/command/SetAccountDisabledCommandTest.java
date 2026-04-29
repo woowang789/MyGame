@@ -99,6 +99,7 @@ class SetAccountDisabledCommandTest {
                 captured.set(d);
                 return updateResult;
             }
+            @Override public int updatePassword(long id, String hash, String salt) { return 0; }
         };
     }
 

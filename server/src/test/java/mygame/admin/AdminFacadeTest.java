@@ -57,6 +57,7 @@ class AdminFacadeTest {
             }
             @Override public long count() { return 42; }
             @Override public int setDisabled(long id, boolean d) { return 1; }
+            @Override public int updatePassword(long id, String hash, String salt) { return 1; }
         };
         var facade = new AdminFacade(List::of, repo, fakePlayerRepo(), fakeAuditRepo(), noopSave());
 
@@ -142,6 +143,7 @@ class AdminFacadeTest {
             @Override public List<AccountSummary> findPage(int offset, int limit) { return List.of(); }
             @Override public long count() { return total; }
             @Override public int setDisabled(long id, boolean d) { return 1; }
+            @Override public int updatePassword(long id, String hash, String salt) { return 1; }
         };
     }
 

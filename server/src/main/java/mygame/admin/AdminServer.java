@@ -23,6 +23,7 @@ import mygame.admin.handlers.DashboardHandler;
 import mygame.admin.handlers.ForceSaveHandler;
 import mygame.admin.handlers.LoginHandler;
 import mygame.admin.handlers.LogoutHandler;
+import mygame.admin.handlers.ResetPasswordHandler;
 import mygame.admin.handlers.StaticAssetHandler;
 import mygame.admin.handlers.WidgetsHandler;
 import org.slf4j.Logger;
@@ -84,6 +85,8 @@ public final class AdminServer {
                 new AccountDisabledHandler(facade, auditRepo)), authFilter);
         protect(http.createContext("/admin/actions/adjust-player",
                 new AdjustPlayerHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/reset-password",
+                new ResetPasswordHandler(facade, auditRepo)), authFilter);
     }
 
     private static void protect(HttpContext ctx, AuthFilter filter) {

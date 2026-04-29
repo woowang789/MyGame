@@ -97,5 +97,11 @@ class AuthServiceTest {
             byId.put(accountId, new Account(a.id(), a.username(), a.passwordHash(), a.salt(), disabled));
             return 1;
         }
+        @Override public int updatePassword(long accountId, String passwordHash, String salt) {
+            Account a = byId.get(accountId);
+            if (a == null) return 0;
+            byId.put(accountId, new Account(a.id(), a.username(), passwordHash, salt, a.disabled()));
+            return 1;
+        }
     }
 }

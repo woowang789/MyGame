@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import mygame.admin.audit.AuditLogRepository;
+import mygame.auth.PasswordHasher;
+import mygame.auth.PasswordHasher.Hashed;
 import mygame.db.AccountRepository;
 import mygame.db.AccountRepository.AccountSummary;
 import mygame.db.PlayerRepository;
@@ -150,6 +152,27 @@ public final class AdminFacade {
         playerRepo.save(snapshot.id(), snapshot.level(), newExp, snapshot.meso(),
                 snapshot.hp(), snapshot.mp(), snapshot.items(), snapshot.equipment());
         return AdjustResult.offline(newExp);
+    }
+
+    /**
+     * 비밀번호 리셋. 게임 측 {@link PasswordHasher} 를 그대로 재사용해 동일 알고리즘
+     * (PBKDF2 + per-user salt) 로 새 해시를 만들어 DB 만 갱신한다.
+     *
+     * <p>의도적 보안 결정:
+     * <ul>
+     *   <li>호출자에게 raw password 문자열은 받되 <em>해시 후에는 어디에도 저장·로깅하지
+     *       않는다</em>. AdminCommand 의 audit payload 도 비밀번호를 담지 않는다.
+     *   <li>현재 진행 중인 게임 세션은 즉시 무효화하지 않는다 — 라이브 WS 끊기는 별도 명령
+     *       (kick) 으로 분리. 학습 단계의 단순화.
+     *   <li>비밀번호 검증 규칙(최소 길이) 은 호출 핸들러가 사전에 검증한다 — Facade 는
+     *       정책 적용보다 위임에 집중.
+     * </ul>
+     *
+     * @return 변경된 행 수 (id 가 존재하지 않으면 0)
+     */
+    public int resetPassword(long accountId, String newRawPassword) {
+        Hashed h = PasswordHasher.hash(newRawPassword);
+        return accountRepo.updatePassword(accountId, h.hash(), h.salt());
     }
 
     /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */

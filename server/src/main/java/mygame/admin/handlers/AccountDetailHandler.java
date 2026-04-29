@@ -96,6 +96,12 @@ public final class AccountDetailHandler implements HttpHandler {
           .append("<p id=\"adjust-result\" class=\"action-result\"></p>")
           .append("</section>");
 
+        sb.append("<section><h2>보안</h2>")
+          .append("<p class=\"empty\">비밀번호 리셋은 즉시 DB 에 반영. 진행 중인 게임 세션은 끊기지 않으며, 다음 로그인부터 새 비밀번호로 접속 가능.</p>")
+          .append(resetPasswordForm(account.id(), account.username()))
+          .append("<p id=\"reset-result\" class=\"action-result\"></p>")
+          .append("</section>");
+
         sb.append("<section><h2>인벤토리</h2>");
         if (p.items().isEmpty()) {
             sb.append("<p class=\"empty\">비어있음</p>");
@@ -127,6 +133,24 @@ public final class AccountDetailHandler implements HttpHandler {
 
     private static String row(String key, String value) {
         return "<tr><th>" + Html.esc(key) + "</th><td>" + value + "</td></tr>";
+    }
+
+    /**
+     * 비밀번호 리셋 폼. 폼 자체는 평문 비밀번호를 brower → server 까지만 전달하고,
+     * 응답에는 비밀번호를 다시 echo 하지 않는다. autocomplete=new-password 로 브라우저
+     * 자동완성을 분리.
+     */
+    private static String resetPasswordForm(long accountId, String username) {
+        return "<form hx-post=\"/admin/actions/reset-password\" hx-target=\"#reset-result\" "
+                + "hx-swap=\"innerHTML\" class=\"adjust-form\" "
+                + "hx-confirm=\"" + Html.esc(username) + " 의 비밀번호를 리셋합니다. 진행할까요?\">"
+                + "<input type=\"hidden\" name=\"accountId\" value=\"" + accountId + "\">"
+                + "<label>새 비밀번호 "
+                + "<input type=\"password\" name=\"newPassword\" required minlength=\"6\" maxlength=\"128\" "
+                + "autocomplete=\"new-password\" placeholder=\"6자 이상\">"
+                + "</label>"
+                + "<button type=\"submit\">비밀번호 리셋</button>"
+                + "</form>";
     }
 
     /**

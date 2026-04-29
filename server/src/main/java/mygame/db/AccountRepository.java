@@ -37,4 +37,11 @@ public interface AccountRepository {
      * @return 변경된 행 수 (id 가 존재하지 않으면 0)
      */
     int setDisabled(long accountId, boolean disabled);
+
+    /**
+     * 비밀번호 해시·솔트 갱신. 호출자가 사전에 해시한 값을 전달한다.
+     *
+     * @return 변경된 행 수 (id 가 존재하지 않으면 0)
+     */
+    int updatePassword(long accountId, String passwordHash, String salt);
 }

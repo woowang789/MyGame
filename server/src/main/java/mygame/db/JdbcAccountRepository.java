@@ -70,6 +70,21 @@ public final class JdbcAccountRepository implements AccountRepository {
     }
 
     @Override
+    public int updatePassword(long accountId, String passwordHash, String salt) {
+        String sql = "UPDATE accounts SET password_hash = ?, salt = ? WHERE id = ?";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, passwordHash);
+            ps.setString(2, salt);
+            ps.setLong(3, accountId);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            // 메시지에 비밀번호 정보가 들어가지 않도록 id 만 노출.
+            throw new RuntimeException("updatePassword 실패: id=" + accountId, e);
+        }
+    }
+
+    @Override
     public Optional<AccountSummary> findById(long accountId) {
         String sql = "SELECT id, username, created_at, disabled FROM accounts WHERE id = ?";
         try (Connection conn = db.getConnection();
