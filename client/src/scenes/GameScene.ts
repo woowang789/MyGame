@@ -233,6 +233,9 @@ export class GameScene extends Phaser.Scene {
     this.network.on('INVENTORY', (p) => this.onInventory(p));
     this.network.on('MESO', (p) => this.onMeso(p));
     this.network.on('CHAT', (p) => this.onChat(p));
+    // 운영자 전체 공지: 별도 패킷이지만 표시 채널은 채팅의 'sys' 라인 재사용 — 클라가
+    // 새 UI 를 도입하지 않아도 즉시 가시화되고, 채팅 로그 스크롤백에 함께 남는다.
+    this.network.on('SYSTEM_NOTICE', (p) => this.onSystemNotice(p));
     this.network.on('EQUIPMENT', (p) => this.onEquipment(p));
     this.network.on('STATS', (p) => this.onStats(p));
     this.network.on('SKILL_USED', (p) => this.onSkillUsed(p));
@@ -831,5 +834,12 @@ export class GameScene extends Phaser.Scene {
 
   private onChat(p: Packet): void {
     this.chat.onReceive(p.scope as string, p.sender as string, p.message as string);
+  }
+
+  /** 운영자 전체 공지 도착. 채팅 로그의 'sys' 라인으로 표시 — 시각적으로 다른 컬러. */
+  private onSystemNotice(p: Packet): void {
+    const message = (p.message as string) ?? '';
+    if (!message) return;
+    this.chat.append('sys', `[공지] ${message}`);
   }
 }

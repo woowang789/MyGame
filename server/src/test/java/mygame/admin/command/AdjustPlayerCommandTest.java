@@ -42,7 +42,8 @@ class AdjustPlayerCommandTest {
                 playerRepoStubMeso(500L, captured),
                 recordingAudit(auditEntries),
                 () -> {},
-                p -> {});
+                p -> {},
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         String msg = new AdjustPlayerCommand(facade, 7L, Kind.MESO, 1500L)
@@ -67,7 +68,8 @@ class AdjustPlayerCommandTest {
                 playerRepoStubMeso(100L, captured),
                 recordingAudit(auditEntries),
                 () -> {},
-                p -> {});
+                p -> {},
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         new AdjustPlayerCommand(facade, 7L, Kind.MESO, -99999L)
@@ -87,7 +89,8 @@ class AdjustPlayerCommandTest {
                 playerRepoStubExp(50, captured),
                 recordingAudit(auditEntries),
                 () -> {},
-                p -> {});
+                p -> {},
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         new AdjustPlayerCommand(facade, 7L, Kind.EXP, 200L)
@@ -108,7 +111,8 @@ class AdjustPlayerCommandTest {
                 emptyPlayerRepo(captured),
                 recordingAudit(auditEntries),
                 () -> {},
-                p -> {});
+                p -> {},
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         String msg = new AdjustPlayerCommand(facade, 999L, Kind.MESO, 100L)

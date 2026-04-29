@@ -58,6 +58,19 @@ public final class DashboardHandler implements HttpHandler {
                   </form>
                   <p id="force-save-result" class="action-result"></p>
                 </section>
+
+                <section>
+                  <h2>전체 공지</h2>
+                  <p class="empty">현재 접속 중인 모든 세션에 시스템 메시지를 즉시 푸시. 입력 후 [송신].</p>
+                  <form hx-post="/admin/actions/broadcast" hx-target="#broadcast-result" hx-swap="innerHTML"
+                        class="broadcast-form"
+                        hx-confirm="전체 접속자에게 공지를 송신합니다. 진행할까요?">
+                    <textarea name="message" required maxlength="200" rows="2"
+                              placeholder="최대 200자. 줄바꿈 가능."></textarea>
+                    <button type="submit">송신</button>
+                  </form>
+                  <p id="broadcast-result" class="action-result"></p>
+                </section>
                 """.formatted(s.onlineCount(), s.heapUsedMb(), s.heapMaxMb(), uptimeMin);
         HttpUtils.sendHtml(ex, 200, Html.layout("Admin Dashboard", body));
     }

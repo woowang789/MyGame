@@ -246,6 +246,27 @@ public final class GameServer extends WebSocketServer {
         return java.util.List.copyOf(sessionPlayers.values());
     }
 
+    /**
+     * 모든 접속 세션에 시스템 공지를 푸시. admin 모듈이 호출하는 외부 진입점이다.
+     *
+     * <p>JSON 직렬화는 한 번만 — 같은 문자열을 N 개 세션에 그대로 send 해 CPU 절약.
+     * 끊긴 세션은 send 가 예외를 던지지 않도록 isOpen 가드 후 송신.
+     *
+     * @return 실제로 전송에 성공한 세션 수
+     */
+    public int broadcastSystemNotice(String message) {
+        String payload = PacketEnvelope.wrap(json, "SYSTEM_NOTICE",
+                new mygame.network.packets.Packets.SystemNoticePacket(message));
+        int sent = 0;
+        for (mygame.game.entity.Player p : sessionPlayers.values()) {
+            if (p.connection() != null && p.connection().isOpen()) {
+                p.connection().send(payload);
+                sent++;
+            }
+        }
+        return sent;
+    }
+
     public void shutdownPersistence() {
         try {
             periodicSaver.saveAll();

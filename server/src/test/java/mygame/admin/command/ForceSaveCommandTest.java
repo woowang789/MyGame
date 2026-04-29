@@ -40,7 +40,8 @@ class ForceSaveCommandTest {
                 emptyPlayerRepo(),
                 auditRepo,
                 saveCalls::incrementAndGet,
-                p -> {});
+                p -> {},
+                m -> 0);
 
         var actor = new Session("tok-xyz", 7L, "ops", "admin",
                 Instant.now().plusSeconds(3600));

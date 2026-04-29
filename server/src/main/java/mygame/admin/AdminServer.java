@@ -19,6 +19,7 @@ import mygame.admin.handlers.AccountDisabledHandler;
 import mygame.admin.handlers.AccountsHandler;
 import mygame.admin.handlers.AdjustPlayerHandler;
 import mygame.admin.handlers.AuditHandler;
+import mygame.admin.handlers.BroadcastNoticeHandler;
 import mygame.admin.handlers.DashboardHandler;
 import mygame.admin.handlers.ForceSaveHandler;
 import mygame.admin.handlers.KickPlayerHandler;
@@ -90,6 +91,8 @@ public final class AdminServer {
                 new ResetPasswordHandler(facade, auditRepo)), authFilter);
         protect(http.createContext("/admin/actions/kick-player",
                 new KickPlayerHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/broadcast",
+                new BroadcastNoticeHandler(facade, auditRepo)), authFilter);
     }
 
     private static void protect(HttpContext ctx, AuthFilter filter) {

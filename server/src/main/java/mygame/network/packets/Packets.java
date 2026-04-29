@@ -130,6 +130,14 @@ public final class Packets {
     /** 채팅 수신 브로드캐스트/개별 전달. */
     public record ChatMessage(String scope, String sender, String message) {}
 
+    /**
+     * 운영자 전체 공지. 모든 접속 세션에 단방향 푸시. 클라이언트는 이를 채팅창에
+     * 시스템 메시지로 그대로 출력해도 좋고 별도 배너로 띄워도 된다.
+     *
+     * @param message 본문(공백 trim 후 전송)
+     */
+    public record SystemNoticePacket(String message) {}
+
     // Phase D — 인벤토리 상호작용
 
     /** 소비 아이템 사용 요청. 해당 아이템 1개를 소모하고 효과를 적용. */

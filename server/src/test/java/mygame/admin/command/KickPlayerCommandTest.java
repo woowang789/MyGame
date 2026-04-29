@@ -40,7 +40,8 @@ class KickPlayerCommandTest {
                 playerRepoFor(online),
                 recordingAudit(auditEntries),
                 () -> {},
-                kicked::set);
+                kicked::set,
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         String msg = new KickPlayerCommand(facade, 42L)
@@ -68,7 +69,8 @@ class KickPlayerCommandTest {
                 playerRepoFromSnapshot(snapshot),
                 recordingAudit(auditEntries),
                 () -> {},
-                kicked::set);
+                kicked::set,
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         String msg = new KickPlayerCommand(facade, 42L)
@@ -90,7 +92,8 @@ class KickPlayerCommandTest {
                 emptyPlayerRepo(),
                 recordingAudit(auditEntries),
                 () -> {},
-                kicked::set);
+                kicked::set,
+                m -> 0);
 
         var session = new Session("tok", 1L, "ops", "admin", Instant.now().plusSeconds(60));
         String msg = new KickPlayerCommand(facade, 999L)

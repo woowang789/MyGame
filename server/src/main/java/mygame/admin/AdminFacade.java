@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.auth.PasswordHasher;
 import mygame.auth.PasswordHasher.Hashed;
@@ -53,6 +54,11 @@ public final class AdminFacade {
      * Consumer 로 추상화한 이유: admin 모듈이 WebSocket 타입에 직접 의존하지 않게 + 테스트.
      */
     private final Consumer<Player> kickAction;
+    /**
+     * 시스템 공지 broadcaster. 메시지를 받아 송신 성공 세션 수를 돌려준다.
+     * 보통 {@code GameServer::broadcastSystemNotice} 를 가리킨다.
+     */
+    private final ToIntFunction<String> noticeBroadcaster;
     private final long startedAtMillis;
 
     public AdminFacade(Supplier<Collection<Player>> playersSupplier,
@@ -60,13 +66,15 @@ public final class AdminFacade {
                        PlayerRepository playerRepo,
                        AuditLogRepository auditRepo,
                        Runnable saveAllAction,
-                       Consumer<Player> kickAction) {
+                       Consumer<Player> kickAction,
+                       ToIntFunction<String> noticeBroadcaster) {
         this.playersSupplier = playersSupplier;
         this.accountRepo = accountRepo;
         this.playerRepo = playerRepo;
         this.auditRepo = auditRepo;
         this.saveAllAction = saveAllAction;
         this.kickAction = kickAction;
+        this.noticeBroadcaster = noticeBroadcaster;
         this.startedAtMillis = System.currentTimeMillis();
     }
 
@@ -208,6 +216,15 @@ public final class AdminFacade {
         if (online == null) return KickResult.notOnline(snapshot.name());
         kickAction.accept(online);
         return KickResult.kicked(online.name());
+    }
+
+    /**
+     * 전체 공지 송신. 호출자가 메시지를 사전에 trim/검증한다.
+     *
+     * @return 실제로 전송에 성공한 세션 수 (오프라인 0 가능)
+     */
+    public int broadcastSystemNotice(String message) {
+        return noticeBroadcaster.applyAsInt(message);
     }
 
     /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */

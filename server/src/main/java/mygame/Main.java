@@ -49,7 +49,9 @@ public final class Main {
                 auditRepo,
                 server.periodicSaver()::saveAll,
                 // 킥: 게임 서버 onClose 핸들러를 자연스럽게 트리거하도록 connection.close() 위임.
-                p -> p.connection().close());
+                p -> p.connection().close(),
+                // 전체 공지: 직렬화·전 세션 송신 로직은 GameServer 가 캡슐화.
+                server::broadcastSystemNotice);
         AdminServer adminServer = new AdminServer(adminPort, facade, adminAuth, auditRepo);
         adminServer.start();
         log.info("백오피스 HTTP 가 포트 {}에서 시작되었습니다.", adminPort);
