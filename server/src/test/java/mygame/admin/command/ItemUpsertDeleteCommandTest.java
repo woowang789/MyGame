@@ -55,6 +55,7 @@ class ItemUpsertDeleteCommandTest {
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 TestRepos.emptyShopRepo(),
                 capturing,
+                mygame.admin.TestRepos.emptyMonsterRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 
@@ -87,6 +88,7 @@ class ItemUpsertDeleteCommandTest {
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 TestRepos.emptyShopRepo(),
                 capturing,
+                mygame.admin.TestRepos.emptyMonsterRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 
@@ -113,6 +115,7 @@ class ItemUpsertDeleteCommandTest {
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 TestRepos.emptyShopRepo(),
                 capturing,
+                mygame.admin.TestRepos.emptyMonsterRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 

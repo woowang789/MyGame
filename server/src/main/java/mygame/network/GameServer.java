@@ -73,24 +73,27 @@ public final class GameServer extends WebSocketServer {
 
     private final ObjectMapper json = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    private final World world = new World(json);
-    private final GameLoop gameLoop = new GameLoop(world);
+    // World 와 그 의존 객체들은 ctor 에서 ItemRegistry/MonsterRegistry 부트스트랩 이후에
+    // 초기화한다 — World 가 SpawnPoint.of 를 통해 MonsterRegistry 를 즉시 조회하기 때문.
+    private final World world;
+    private final GameLoop gameLoop;
     private final EventBus eventBus = new EventBus();
     @SuppressWarnings("unused") // 생성 시 EventBus 에 자기 자신을 등록하므로 참조 유지만 하면 충분
     private final ProgressionSystem progression = new ProgressionSystem(eventBus);
-    private final CombatService combatService = new CombatService(world, eventBus);
+    private final CombatService combatService;
     private final Database database;
     private final PlayerRepository playerRepo;
     private final AccountRepository accountRepo;
     private final mygame.db.ShopRepository shopRepo;
     private final mygame.db.ItemTemplateRepository itemRepo;
+    private final mygame.db.MonsterTemplateRepository monsterRepo;
     private final AuthSessions auth;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
     private final SessionNotifier notifier = new SessionNotifier(json);
-    private final ChatHandler chatHandler = new ChatHandler(world);
-    private final InventoryHandler inventoryHandler = new InventoryHandler(world, json, notifier);
-    private final CombatHandler combatHandler = new CombatHandler(world, combatService, notifier);
-    private final ShopHandler shopHandler = new ShopHandler(world);
+    private final ChatHandler chatHandler;
+    private final InventoryHandler inventoryHandler;
+    private final CombatHandler combatHandler;
+    private final ShopHandler shopHandler;
 
     private final Map<WebSocket, Player> sessionPlayers = new ConcurrentHashMap<>();
     private final AtomicInteger playerIdSeq = new AtomicInteger(1);
@@ -114,10 +117,23 @@ public final class GameServer extends WebSocketServer {
         this.accountRepo = new JdbcAccountRepository(database);
         this.shopRepo = new mygame.db.JdbcShopRepository(database);
         this.itemRepo = new mygame.db.JdbcItemTemplateRepository(database);
-        // 부트스트랩 순서가 중요 — ShopRegistry.bootstrap 이 카탈로그 검증 시 ItemRegistry.get
-        // 을 호출하므로 아이템 캐시가 먼저 채워져 있어야 한다.
+        this.monsterRepo = new mygame.db.JdbcMonsterTemplateRepository(database);
+        // 부트스트랩 순서:
+        //  1) ItemRegistry — 다른 두 레지스트리가 itemId 를 검증할 때 의존.
+        //  2) MonsterRegistry — drop table 이 itemId 를 참조.
+        //  3) ShopRegistry — shop_items 가 itemId 를 참조.
+        // 이 순서가 깨지면 validateAll 이 즉시 실패해 빠르게 알린다.
         mygame.game.item.ItemRegistry.bootstrap(this.itemRepo);
+        mygame.game.entity.MonsterRegistry.bootstrap(this.monsterRepo);
         mygame.game.shop.ShopRegistry.bootstrap(this.shopRepo);
+        // World 는 SpawnPoint 검증 시 MonsterRegistry 를 호출하므로 위 bootstrap 다음에 초기화.
+        this.world = new World(json);
+        this.gameLoop = new GameLoop(world);
+        this.combatService = new CombatService(world, eventBus);
+        this.chatHandler = new ChatHandler(world);
+        this.inventoryHandler = new InventoryHandler(world, json, notifier);
+        this.combatHandler = new CombatHandler(world, combatService, notifier);
+        this.shopHandler = new ShopHandler(world);
         this.auth = new AuthSessions(new AuthService(accountRepo), json);
         this.world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
         this.periodicSaver = new PeriodicSaver(playerRepo,
@@ -250,6 +266,8 @@ public final class GameServer extends WebSocketServer {
     public mygame.db.ShopRepository shopRepo() { return shopRepo; }
 
     public mygame.db.ItemTemplateRepository itemRepo() { return itemRepo; }
+
+    public mygame.db.MonsterTemplateRepository monsterRepo() { return monsterRepo; }
 
     public PeriodicSaver periodicSaver() { return periodicSaver; }
 

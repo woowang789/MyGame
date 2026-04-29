@@ -36,6 +36,7 @@ class AdminFacadeTest {
                 fakePlayerRepo(),
                 mygame.admin.TestRepos.emptyShopRepo(),
                 mygame.admin.TestRepos.emptyItemRepo(),
+                mygame.admin.TestRepos.emptyMonsterRepo(),
                 fakeAuditRepo(),
                 noopSave(), p -> {}, m -> 0);
 
@@ -61,7 +62,7 @@ class AdminFacadeTest {
             @Override public int setDisabled(long id, boolean d) { return 1; }
             @Override public int updatePassword(long id, String hash, String salt) { return 1; }
         };
-        var facade = new AdminFacade(List::of, repo, fakePlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), fakeAuditRepo(), noopSave(), p -> {}, m -> 0);
+        var facade = new AdminFacade(List::of, repo, fakePlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), mygame.admin.TestRepos.emptyMonsterRepo(), fakeAuditRepo(), noopSave(), p -> {}, m -> 0);
 
         var page = facade.accountsPage(0, 20);
         assertEquals(1, counter.get(), "findPage 가 정확히 1회 호출돼야 함");
@@ -73,7 +74,7 @@ class AdminFacadeTest {
     @DisplayName("forceSaveAll 은 주입된 saveAction 을 정확히 1회 호출")
     void forceSave_delegates() {
         var calls = new AtomicInteger(0);
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), fakeAuditRepo(),
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), mygame.admin.TestRepos.emptyMonsterRepo(), fakeAuditRepo(),
                 () -> calls.incrementAndGet(), p -> {}, m -> 0);
 
         facade.forceSaveAll();
@@ -101,7 +102,7 @@ class AdminFacadeTest {
                 throw new UnsupportedOperationException();
             }
         };
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), playerRepo, mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), fakeAuditRepo(), noopSave(), p -> {}, m -> 0);
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), playerRepo, mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), mygame.admin.TestRepos.emptyMonsterRepo(), fakeAuditRepo(), noopSave(), p -> {}, m -> 0);
         var detail = facade.playerDetailByAccount(42L);
         assertTrue(detail.isPresent());
         assertEquals("alice-char", detail.get().name());
@@ -125,7 +126,7 @@ class AdminFacadeTest {
     @Test
     @DisplayName("stats 는 양수 heap/uptime 을 보고하고 onlineCount 를 함께 노출")
     void stats_shape() {
-        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), fakeAuditRepo(), noopSave(), p -> {}, m -> 0);
+        var facade = new AdminFacade(List::of, fakeAccountRepo(0), fakePlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), mygame.admin.TestRepos.emptyMonsterRepo(), fakeAuditRepo(), noopSave(), p -> {}, m -> 0);
         var stats = facade.stats();
         assertTrue(stats.heapUsedMb() >= 0);
         assertTrue(stats.heapMaxMb() >= stats.heapUsedMb());

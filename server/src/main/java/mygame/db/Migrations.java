@@ -201,6 +201,89 @@ public final class Migrations {
                             + "VALUES ('work_gloves', '작업 장갑', 0x7d5b3a, 'EQUIPMENT', 'GLOVES', 4, 200)",
                     "INSERT INTO item_templates (id, name, color, type, slot, bonus_speed, sell_price) "
                             + "VALUES ('running_shoes', '달리기 신발', 0x4caf50, 'EQUIPMENT', 'SHOES', 30, 200)"
+            )),
+            // 백오피스 Phase 4-3: 몬스터 템플릿 DB 화. drop table 은 1:N 정규화 — 한 종이
+            // N 개의 (itemId, chance) 행을 가진다. monster_templates 가 부모.
+            new Step(13, "monster_templates + monster_drops 테이블", List.of(
+                    """
+                    CREATE TABLE IF NOT EXISTS monster_templates (
+                        id VARCHAR(64) PRIMARY KEY,
+                        display_name VARCHAR(128) NOT NULL,
+                        max_hp INT NOT NULL,
+                        attack_damage INT NOT NULL,
+                        attack_interval_ms BIGINT NOT NULL,
+                        speed DOUBLE NOT NULL,
+                        exp_reward INT NOT NULL,
+                        respawn_delay_ms BIGINT NOT NULL,
+                        meso_min INT NOT NULL,
+                        meso_max INT NOT NULL,
+                        body_color INT NOT NULL DEFAULT 0
+                    )
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS monster_drops (
+                        monster_id VARCHAR(64) NOT NULL,
+                        item_id VARCHAR(64) NOT NULL,
+                        chance DOUBLE NOT NULL,
+                        sort_order INT NOT NULL DEFAULT 0,
+                        PRIMARY KEY (monster_id, item_id),
+                        FOREIGN KEY (monster_id) REFERENCES monster_templates(id) ON DELETE CASCADE
+                    )
+                    """
+            )),
+            // v13 직후 1회 시드. 기존 MonsterRegistry 5개 종 + 각 종의 drop 엔트리.
+            new Step(14, "monster_templates 시드", List.of(
+                    // snail
+                    "INSERT INTO monster_templates (id, display_name, max_hp, attack_damage,"
+                            + " attack_interval_ms, speed, exp_reward, respawn_delay_ms,"
+                            + " meso_min, meso_max, body_color) VALUES "
+                            + "('snail', '달팽이', 50, 10, 1500, 60, 15, 5000, 5, 20, 0x7cd36a)",
+                    "INSERT INTO monster_drops (monster_id, item_id, chance, sort_order) VALUES"
+                            + " ('snail', 'red_potion',   0.50, 0),"
+                            + " ('snail', 'snail_shell',  0.40, 1),"
+                            + " ('snail', 'blue_potion',  0.10, 2),"
+                            + " ('snail', 'wooden_sword', 0.05, 3),"
+                            + " ('snail', 'leather_cap',  0.03, 4)",
+                    // blue_snail
+                    "INSERT INTO monster_templates (id, display_name, max_hp, attack_damage,"
+                            + " attack_interval_ms, speed, exp_reward, respawn_delay_ms,"
+                            + " meso_min, meso_max, body_color) VALUES "
+                            + "('blue_snail', '파란 달팽이', 90, 14, 1400, 70, 28, 6000, 10, 35, 0x6cb7ff)",
+                    "INSERT INTO monster_drops (monster_id, item_id, chance, sort_order) VALUES"
+                            + " ('blue_snail', 'blue_potion',  0.45, 0),"
+                            + " ('blue_snail', 'snail_shell',  0.30, 1),"
+                            + " ('blue_snail', 'red_potion',   0.20, 2),"
+                            + " ('blue_snail', 'wooden_sword', 0.06, 3)",
+                    // red_snail
+                    "INSERT INTO monster_templates (id, display_name, max_hp, attack_damage,"
+                            + " attack_interval_ms, speed, exp_reward, respawn_delay_ms,"
+                            + " meso_min, meso_max, body_color) VALUES "
+                            + "('red_snail', '빨간 달팽이', 140, 22, 1200, 80, 50, 7000, 20, 60, 0xff6a5a)",
+                    "INSERT INTO monster_drops (monster_id, item_id, chance, sort_order) VALUES"
+                            + " ('red_snail', 'red_potion',   0.55, 0),"
+                            + " ('red_snail', 'snail_shell',  0.25, 1),"
+                            + " ('red_snail', 'iron_sword',   0.04, 2),"
+                            + " ('red_snail', 'cloth_armor',  0.05, 3),"
+                            + " ('red_snail', 'work_gloves',  0.05, 4),"
+                            + " ('red_snail', 'running_shoes',0.04, 5)",
+                    // orange_mushroom
+                    "INSERT INTO monster_templates (id, display_name, max_hp, attack_damage,"
+                            + " attack_interval_ms, speed, exp_reward, respawn_delay_ms,"
+                            + " meso_min, meso_max, body_color) VALUES "
+                            + "('orange_mushroom', '주황버섯', 110, 18, 1600, 45, 40, 6500, 15, 45, 0xffa64a)",
+                    "INSERT INTO monster_drops (monster_id, item_id, chance, sort_order) VALUES"
+                            + " ('orange_mushroom', 'red_potion',  0.35, 0),"
+                            + " ('orange_mushroom', 'blue_potion', 0.35, 1),"
+                            + " ('orange_mushroom', 'leather_cap', 0.08, 2),"
+                            + " ('orange_mushroom', 'cloth_armor', 0.06, 3)",
+                    // stump
+                    "INSERT INTO monster_templates (id, display_name, max_hp, attack_damage,"
+                            + " attack_interval_ms, speed, exp_reward, respawn_delay_ms,"
+                            + " meso_min, meso_max, body_color) VALUES "
+                            + "('stump', '나무 토막', 70, 8, 2000, 30, 20, 5500, 8, 25, 0x9a6b3d)",
+                    "INSERT INTO monster_drops (monster_id, item_id, chance, sort_order) VALUES"
+                            + " ('stump', 'snail_shell', 0.20, 0),"
+                            + " ('stump', 'red_potion',  0.15, 1)"
             ))
     );
 

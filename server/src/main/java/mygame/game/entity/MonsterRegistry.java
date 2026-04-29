@@ -1,102 +1,65 @@
 package mygame.game.entity;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import mygame.game.item.DropTable;
-import mygame.game.item.DropTable.Entry;
+import java.util.concurrent.ConcurrentHashMap;
+import mygame.db.MonsterTemplateRepository;
+import mygame.game.item.ItemRegistry;
 
 /**
- * 몬스터 템플릿 레지스트리.
+ * 몬스터 템플릿 캐시 + 핫 리로드 진입점.
  *
- * <p>{@link mygame.game.item.ItemRegistry} 와 대칭 구조. 현재 in-memory 이지만
- * 추후 JSON/DB 로 교체해도 호출부는 변하지 않는다.
+ * <p>이전 단계에서는 정적 코드 상수가 SSoT 였다. Phase 4-3 에서 DB 의 {@code monster_templates}
+ * + {@code monster_drops} 가 SSoT 가 되고, 본 클래스는 다음 두 가지를 한다:
+ * <ul>
+ *   <li>서버 시작 시 {@link #bootstrap(MonsterTemplateRepository)} 가 모든 종을 한 번 적재.
+ *   <li>운영 화면이 추가/수정/삭제 직후 {@link #reload(String)} 로 해당 monsterId 만 갱신.
+ * </ul>
+ *
+ * <p><b>API 호환성</b>: {@link #get} 시그니처를 보존 — SpawnPoint 등 게임 핫패스 코드는
+ * 손대지 않아도 데이터 출처가 바뀐다.
+ *
+ * <p><b>호출 순서</b>: {@link ItemRegistry#bootstrap} 보다 <em>나중에</em> 호출돼야 한다.
+ * drop table 의 itemId 가 ItemRegistry 에 등록돼 있는지 검증하기 위함.
  */
 public final class MonsterRegistry {
 
-    private static final Map<String, MonsterTemplate> TEMPLATES;
-
-    static {
-        Map<String, MonsterTemplate> m = new LinkedHashMap<>();
-
-        // 달팽이: 초보용. 약한 공격, 잦은 포션 드롭.
-        put(m, new MonsterTemplate(
-                "snail", "달팽이",
-                50, 10, 1500, 60, 15, 5000,
-                5, 20,
-                DropTable.of(
-                        new Entry("red_potion", 0.50),
-                        new Entry("snail_shell", 0.40),
-                        new Entry("blue_potion", 0.10),
-                        new Entry("wooden_sword", 0.05),
-                        new Entry("leather_cap", 0.03)
-                ),
-                0x7cd36a));
-
-        // 파란 달팽이: 이동은 비슷하지만 맷집이 두 배 가까이.
-        put(m, new MonsterTemplate(
-                "blue_snail", "파란 달팽이",
-                90, 14, 1400, 70, 28, 6000,
-                10, 35,
-                DropTable.of(
-                        new Entry("blue_potion", 0.45),
-                        new Entry("snail_shell", 0.30),
-                        new Entry("red_potion", 0.20),
-                        new Entry("wooden_sword", 0.06)
-                ),
-                0x6cb7ff));
-
-        // 빨간 달팽이: 공격력과 리워드가 더 높다. 중급 필드용.
-        put(m, new MonsterTemplate(
-                "red_snail", "빨간 달팽이",
-                140, 22, 1200, 80, 50, 7000,
-                20, 60,
-                DropTable.of(
-                        new Entry("red_potion", 0.55),
-                        new Entry("snail_shell", 0.25),
-                        new Entry("iron_sword", 0.04),
-                        new Entry("cloth_armor", 0.05),
-                        new Entry("work_gloves", 0.05),
-                        new Entry("running_shoes", 0.04)
-                ),
-                0xff6a5a));
-
-        // 버섯: 느리고 무해하지만 EXP/메소 효율이 좋다.
-        put(m, new MonsterTemplate(
-                "orange_mushroom", "주황버섯",
-                110, 18, 1600, 45, 40, 6500,
-                15, 45,
-                DropTable.of(
-                        new Entry("red_potion", 0.35),
-                        new Entry("blue_potion", 0.35),
-                        new Entry("leather_cap", 0.08),
-                        new Entry("cloth_armor", 0.06)
-                ),
-                0xffa64a));
-
-        // 나무 토막: 느리고 공격도 약하지만 접촉 시 약간의 피해는 준다.
-        put(m, new MonsterTemplate(
-                "stump", "나무 토막",
-                70, 8, 2000, 30, 20, 5500,
-                8, 25,
-                DropTable.of(
-                        new Entry("snail_shell", 0.20),
-                        new Entry("red_potion", 0.15)
-                ),
-                0x9a6b3d));
-
-        TEMPLATES = Collections.unmodifiableMap(m);
-    }
+    private static volatile MonsterTemplateRepository repo = null;
+    private static final ConcurrentHashMap<String, MonsterTemplate> CACHE = new ConcurrentHashMap<>();
 
     private MonsterRegistry() {}
 
-    private static void put(Map<String, MonsterTemplate> m, MonsterTemplate t) {
-        m.put(t.id(), t);
+    public static synchronized void bootstrap(MonsterTemplateRepository repository) {
+        repo = repository;
+        Map<String, MonsterTemplate> all = repository.loadAll();
+        CACHE.clear();
+        CACHE.putAll(all);
+        validateAll();
+    }
+
+    public static void reload(String monsterId) {
+        if (repo == null) return;
+        repo.findById(monsterId).ifPresentOrElse(
+                t -> CACHE.put(monsterId, t),
+                () -> CACHE.remove(monsterId));
     }
 
     public static MonsterTemplate get(String id) {
-        MonsterTemplate t = TEMPLATES.get(id);
+        MonsterTemplate t = CACHE.get(id);
         if (t == null) throw new IllegalArgumentException("알 수 없는 몬스터 템플릿: " + id);
         return t;
+    }
+
+    /** drop table 의 itemId 가 ItemRegistry 에 등록돼 있는지 시작 시점에 한 번 검증. */
+    private static void validateAll() {
+        for (MonsterTemplate t : CACHE.values()) {
+            for (var e : t.dropTable().entries()) {
+                ItemRegistry.get(e.itemId()); // 미등록이면 IAE
+                if (e.chance() < 0.0 || e.chance() > 1.0) {
+                    throw new IllegalStateException(
+                            "monster=" + t.id() + " drop=" + e.itemId()
+                                    + " chance 는 0..1 범위여야 함: " + e.chance());
+                }
+            }
+        }
     }
 }

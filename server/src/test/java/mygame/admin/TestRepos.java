@@ -5,7 +5,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import mygame.db.ItemTemplateRepository;
+import mygame.db.MonsterTemplateRepository;
 import mygame.db.ShopRepository;
+import mygame.game.entity.MonsterRegistry;
+import mygame.game.entity.MonsterTemplate;
+import mygame.game.item.DropTable;
 import mygame.game.item.EquipSlot;
 import mygame.game.item.ItemRegistry;
 import mygame.game.item.ItemTemplate;
@@ -56,6 +60,22 @@ public final class TestRepos {
     }
 
     /**
+     * MonsterRegistry 를 기본 시드로 부트스트랩. drop table 의 itemId 검증 때문에
+     * ItemRegistry 가 먼저 부트스트랩돼야 함 — 본 메서드도 자동 호출.
+     */
+    public static void bootstrapDefaultMonsters() {
+        bootstrapDefaultItems(); // drop table 검증 의존성
+        Map<String, MonsterTemplate> seed = new LinkedHashMap<>();
+        seed.put("snail", new MonsterTemplate("snail", "달팽이",
+                50, 10, 1500, 60, 15, 5000, 5, 20,
+                DropTable.of(
+                        new DropTable.Entry("red_potion", 0.50),
+                        new DropTable.Entry("snail_shell", 0.40)),
+                0x7cd36a));
+        MonsterRegistry.bootstrap(new InMemoryMonsterRepo(seed));
+    }
+
+    /**
      * ShopRegistry 를 기존 코드 상수와 동일한 카탈로그로 1회 부트스트랩.
      * 게임 측 ShopServiceTest 등 ShopRegistry.find() 에 의존하는 테스트가 호출.
      * ShopRegistry.validateAll 이 ItemRegistry.get 을 호출하므로 아이템도 같이 부트스트랩.
@@ -92,6 +112,20 @@ public final class TestRepos {
         };
     }
 
+    /** 모든 메서드가 빈 결과/0 을 반환하는 MonsterTemplateRepository. */
+    public static MonsterTemplateRepository emptyMonsterRepo() {
+        return new MonsterTemplateRepository() {
+            @Override public Optional<MonsterTemplate> findById(String monsterId) { return Optional.empty(); }
+            @Override public List<MonsterTemplate> findAll() { return List.of(); }
+            @Override public Map<String, MonsterTemplate> loadAll() { return Map.of(); }
+            @Override public int upsertTemplate(MonsterTemplate t) { return 0; }
+            @Override public int replaceDrops(String monsterId, DropTable drops) { return 0; }
+            @Override public int upsertDropLine(String monsterId, String itemId, double chance, int sortOrder) { return 0; }
+            @Override public int deleteDropLine(String monsterId, String itemId) { return 0; }
+            @Override public int deleteById(String monsterId) { return 0; }
+        };
+    }
+
     /** 모든 메서드가 빈 결과/0 을 반환하는 ShopRepository. */
     public static ShopRepository emptyShopRepo() {
         return new ShopRepository() {
@@ -104,6 +138,25 @@ public final class TestRepos {
                                             long price, int stockPerTx, int sortOrder) { return 0; }
             @Override public int deleteItem(String shopId, String itemId) { return 0; }
         };
+    }
+
+    /** 인메모리 MonsterTemplateRepository — 테스트 부트스트랩용. */
+    private static final class InMemoryMonsterRepo implements MonsterTemplateRepository {
+        private final Map<String, MonsterTemplate> data;
+        InMemoryMonsterRepo(Map<String, MonsterTemplate> data) { this.data = data; }
+
+        @Override public Optional<MonsterTemplate> findById(String id) {
+            return Optional.ofNullable(data.get(id));
+        }
+        @Override public List<MonsterTemplate> findAll() { return List.copyOf(data.values()); }
+        @Override public Map<String, MonsterTemplate> loadAll() { return Map.copyOf(data); }
+        @Override public int upsertTemplate(MonsterTemplate t) { data.put(t.id(), t); return 1; }
+        @Override public int replaceDrops(String monsterId, DropTable drops) { return drops.entries().size(); }
+        @Override public int upsertDropLine(String monsterId, String itemId, double chance, int sortOrder) { return 1; }
+        @Override public int deleteDropLine(String monsterId, String itemId) { return 1; }
+        @Override public int deleteById(String monsterId) {
+            return data.remove(monsterId) == null ? 0 : 1;
+        }
     }
 
     /** 인메모리 ItemTemplateRepository — bootstrapDefaultItems 가 사용. */

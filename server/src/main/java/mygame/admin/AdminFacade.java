@@ -13,11 +13,15 @@ import mygame.auth.PasswordHasher.Hashed;
 import mygame.db.AccountRepository;
 import mygame.db.AccountRepository.AccountSummary;
 import mygame.db.ItemTemplateRepository;
+import mygame.db.MonsterTemplateRepository;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
 import mygame.db.ShopRepository;
 import mygame.db.ShopRepository.ShopSummary;
+import mygame.game.entity.MonsterRegistry;
+import mygame.game.entity.MonsterTemplate;
 import mygame.game.entity.Player;
+import mygame.game.item.DropTable;
 import mygame.game.item.ItemRegistry;
 import mygame.game.item.ItemTemplate;
 import mygame.game.shop.ShopCatalog;
@@ -50,6 +54,7 @@ public final class AdminFacade {
     private final PlayerRepository playerRepo;
     private final ShopRepository shopRepo;
     private final ItemTemplateRepository itemRepo;
+    private final MonsterTemplateRepository monsterRepo;
     private final AuditLogRepository auditRepo;
     /**
      * 강제 저장 액션. 보통 {@code PeriodicSaver::saveAll} 을 가리키지만, 인터페이스 대신
@@ -75,6 +80,7 @@ public final class AdminFacade {
                        PlayerRepository playerRepo,
                        ShopRepository shopRepo,
                        ItemTemplateRepository itemRepo,
+                       MonsterTemplateRepository monsterRepo,
                        AuditLogRepository auditRepo,
                        Runnable saveAllAction,
                        Consumer<Player> kickAction,
@@ -84,6 +90,7 @@ public final class AdminFacade {
         this.playerRepo = playerRepo;
         this.shopRepo = shopRepo;
         this.itemRepo = itemRepo;
+        this.monsterRepo = monsterRepo;
         this.auditRepo = auditRepo;
         this.saveAllAction = saveAllAction;
         this.kickAction = kickAction;
@@ -305,6 +312,52 @@ public final class AdminFacade {
         int affected = itemRepo.deleteById(itemId);
         if (affected > 0) ItemRegistry.reload(itemId); // 캐시에서도 제거
         return new ItemDeleteResult(affected > 0, 0);
+    }
+
+    // --- 몬스터 템플릿 (Phase 4-3) ---
+
+    public List<MonsterTemplate> monsterTemplates() {
+        return monsterRepo.findAll();
+    }
+
+    public Optional<MonsterTemplate> monsterTemplate(String monsterId) {
+        return monsterRepo.findById(monsterId);
+    }
+
+    /** 부모 행 추가/수정. drop table 은 별도 메서드로. 캐시 reload 자동. */
+    public int upsertMonsterTemplate(MonsterTemplate t) {
+        int updated = monsterRepo.upsertTemplate(t);
+        MonsterRegistry.reload(t.id());
+        return updated;
+    }
+
+    /** drop table 전체 교체 — 트랜잭션 + 캐시 reload. */
+    public int replaceMonsterDrops(String monsterId, DropTable drops) {
+        int rows = monsterRepo.replaceDrops(monsterId, drops);
+        MonsterRegistry.reload(monsterId);
+        return rows;
+    }
+
+    public int upsertMonsterDropLine(String monsterId, String itemId, double chance, int sortOrder) {
+        int updated = monsterRepo.upsertDropLine(monsterId, itemId, chance, sortOrder);
+        MonsterRegistry.reload(monsterId);
+        return updated;
+    }
+
+    public int deleteMonsterDropLine(String monsterId, String itemId) {
+        int deleted = monsterRepo.deleteDropLine(monsterId, itemId);
+        MonsterRegistry.reload(monsterId);
+        return deleted;
+    }
+
+    /**
+     * 몬스터 자체 삭제. monster_drops 는 FK CASCADE 로 함께 삭제. SpawnPoint 가 정적
+     * 코드 상수라 외부 참조는 World 시작 시점에 검증되므로 여기서는 단순 삭제.
+     */
+    public int deleteMonsterTemplate(String monsterId) {
+        int deleted = monsterRepo.deleteById(monsterId);
+        if (deleted > 0) MonsterRegistry.reload(monsterId);
+        return deleted;
     }
 
     /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */

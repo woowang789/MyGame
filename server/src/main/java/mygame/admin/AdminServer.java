@@ -29,6 +29,11 @@ import mygame.admin.handlers.ItemsHandler;
 import mygame.admin.handlers.KickPlayerHandler;
 import mygame.admin.handlers.LoginHandler;
 import mygame.admin.handlers.LogoutHandler;
+import mygame.admin.handlers.MonsterDeleteHandler;
+import mygame.admin.handlers.MonsterDetailHandler;
+import mygame.admin.handlers.MonsterDropHandler;
+import mygame.admin.handlers.MonsterUpsertHandler;
+import mygame.admin.handlers.MonstersHandler;
 import mygame.admin.handlers.ResetPasswordHandler;
 import mygame.admin.handlers.ShopDeleteItemHandler;
 import mygame.admin.handlers.ShopDetailHandler;
@@ -115,6 +120,17 @@ public final class AdminServer {
                 new ItemUpsertHandler(facade, auditRepo)), authFilter);
         protect(http.createContext("/admin/actions/item-delete",
                 new ItemDeleteHandler(facade, auditRepo)), authFilter);
+        // /admin/monsters/{id} 와 /admin/monsters — 더 긴 prefix 먼저.
+        protect(http.createContext("/admin/monsters/", new MonsterDetailHandler(facade)), authFilter);
+        protect(http.createContext("/admin/monsters", new MonstersHandler(facade)), authFilter);
+        protect(http.createContext("/admin/actions/monster-upsert",
+                new MonsterUpsertHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/monster-delete",
+                new MonsterDeleteHandler(facade, auditRepo)), authFilter);
+        protect(http.createContext("/admin/actions/monster-drop-upsert",
+                new MonsterDropHandler(facade, auditRepo, false)), authFilter);
+        protect(http.createContext("/admin/actions/monster-drop-delete",
+                new MonsterDropHandler(facade, auditRepo, true)), authFilter);
     }
 
     private static void protect(HttpContext ctx, AuthFilter filter) {

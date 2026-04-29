@@ -58,6 +58,7 @@ class ShopUpsertItemCommandTest {
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 capturedRepo,                        // Facade.upsertShopItem 이 이 repo 호출
                 TestRepos.emptyItemRepo(),
+                mygame.admin.TestRepos.emptyMonsterRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 
@@ -101,6 +102,7 @@ class ShopUpsertItemCommandTest {
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 capturedRepo,
                 mygame.admin.TestRepos.emptyItemRepo(),
+                mygame.admin.TestRepos.emptyMonsterRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 

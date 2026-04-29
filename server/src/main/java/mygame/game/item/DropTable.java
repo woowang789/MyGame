@@ -21,6 +21,11 @@ public final class DropTable {
         this.entries = List.copyOf(entries);
     }
 
+    /** 운영 화면·영속화 계층이 엔트리를 노출해야 할 때 사용. 불변 사본이라 안전. */
+    public List<Entry> entries() {
+        return entries;
+    }
+
     /** 각 엔트리에 대해 확률 롤을 돌려 당첨된 itemId 리스트 반환. */
     public List<String> roll() {
         if (entries.isEmpty()) return Collections.emptyList();
