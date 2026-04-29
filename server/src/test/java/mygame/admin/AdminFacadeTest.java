@@ -49,9 +49,10 @@ class AdminFacadeTest {
             }
             @Override public List<AccountSummary> findPage(int offset, int limit) {
                 counter.incrementAndGet();
-                return List.of(new AccountSummary(1, "alice", Instant.parse("2026-01-01T00:00:00Z")));
+                return List.of(new AccountSummary(1, "alice", Instant.parse("2026-01-01T00:00:00Z"), false));
             }
             @Override public long count() { return 42; }
+            @Override public int setDisabled(long id, boolean d) { return 1; }
         };
         var facade = new AdminFacade(List::of, repo, fakeAuditRepo(), noopSave());
 
@@ -93,6 +94,7 @@ class AdminFacadeTest {
             }
             @Override public List<AccountSummary> findPage(int offset, int limit) { return List.of(); }
             @Override public long count() { return total; }
+            @Override public int setDisabled(long id, boolean d) { return 1; }
         };
     }
 

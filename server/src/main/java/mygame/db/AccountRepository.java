@@ -12,10 +12,11 @@ import java.util.Optional;
  */
 public interface AccountRepository {
 
-    record Account(long id, String username, String passwordHash, String salt) {}
+    /** 인증 흐름에서 사용. 정지(disabled) 여부도 같이 실어 AuthService 가 검사. */
+    record Account(long id, String username, String passwordHash, String salt, boolean disabled) {}
 
     /** 백오피스 목록용 요약 — 비밀번호 해시·솔트는 절대 노출하지 않음. */
-    record AccountSummary(long id, String username, Instant createdAt) {}
+    record AccountSummary(long id, String username, Instant createdAt, boolean disabled) {}
 
     Optional<Account> findByUsername(String username);
 
@@ -26,4 +27,11 @@ public interface AccountRepository {
     List<AccountSummary> findPage(int offset, int limit);
 
     long count();
+
+    /**
+     * 정지/해제 토글.
+     *
+     * @return 변경된 행 수 (id 가 존재하지 않으면 0)
+     */
+    int setDisabled(long accountId, boolean disabled);
 }

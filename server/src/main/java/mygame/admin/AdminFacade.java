@@ -89,6 +89,14 @@ public final class AdminFacade {
         saveAllAction.run();
     }
 
+    /**
+     * 계정 정지/해제 토글. 변경된 행 수를 그대로 반환 — 0 이면 호출자가
+     * "존재하지 않는 계정" 으로 처리.
+     */
+    public int setAccountDisabled(long accountId, boolean disabled) {
+        return accountRepo.setDisabled(accountId, disabled);
+    }
+
     public ServerStats stats() {
         Runtime rt = Runtime.getRuntime();
         long heapUsed = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);

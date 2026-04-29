@@ -56,6 +56,11 @@ public final class AuthService {
         if (!PasswordHasher.verify(password, a.passwordHash(), a.salt())) {
             return new AuthFailure("아이디 또는 비밀번호가 올바르지 않습니다.");
         }
+        // 비밀번호 검증 *후* disabled 검사 — 어떤 계정이 정지 상태인지를
+        // 잘못된 비밀번호로 떠보지 못하도록 메시지 분기를 인증 통과 이후로 미룬다.
+        if (a.disabled()) {
+            return new AuthFailure("정지된 계정입니다. 운영자에게 문의하세요.");
+        }
         return new AuthSuccess(a);
     }
 }

@@ -116,6 +116,10 @@ public final class Migrations {
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                     """
+            )),
+            // 백오피스 Phase 2: 계정 정지(ban) 컬럼. AuthService 가 로그인 시 검사.
+            new Step(8, "accounts.disabled BOOLEAN (계정 정지)", List.of(
+                    "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE"
             ))
     );
 
