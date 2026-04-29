@@ -97,7 +97,7 @@ class ResetPasswordCommandTest {
     // --- helpers ---
 
     private static AdminFacade facade(AccountRepository repo) {
-        return new AdminFacade(List::of, repo, emptyPlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), recordingAudit(new ArrayList<>()), () -> {}, p -> {}, m -> 0);
+        return new AdminFacade(List::of, repo, emptyPlayerRepo(), mygame.admin.TestRepos.emptyShopRepo(), mygame.admin.TestRepos.emptyItemRepo(), recordingAudit(new ArrayList<>()), () -> {}, p -> {}, m -> 0);
     }
 
     private static PlayerRepository emptyPlayerRepo() {

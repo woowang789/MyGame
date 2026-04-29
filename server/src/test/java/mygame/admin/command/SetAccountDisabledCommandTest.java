@@ -32,6 +32,7 @@ class SetAccountDisabledCommandTest {
                 accountRepo(captured, 1),
                 emptyPlayerRepo(),
                 mygame.admin.TestRepos.emptyShopRepo(),
+                mygame.admin.TestRepos.emptyItemRepo(),
                 recordingAudit(auditEntries),
                 () -> {},
                 p -> {},
@@ -58,6 +59,7 @@ class SetAccountDisabledCommandTest {
                 accountRepo(captured, 1),
                 emptyPlayerRepo(),
                 mygame.admin.TestRepos.emptyShopRepo(),
+                mygame.admin.TestRepos.emptyItemRepo(),
                 recordingAudit(auditEntries),
                 () -> {},
                 p -> {},
@@ -81,6 +83,7 @@ class SetAccountDisabledCommandTest {
                 accountRepo(captured, 0), // updated 0 반환
                 emptyPlayerRepo(),
                 mygame.admin.TestRepos.emptyShopRepo(),
+                mygame.admin.TestRepos.emptyItemRepo(),
                 recordingAudit(auditEntries),
                 () -> {},
                 p -> {},

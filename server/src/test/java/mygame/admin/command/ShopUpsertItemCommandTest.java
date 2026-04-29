@@ -57,6 +57,7 @@ class ShopUpsertItemCommandTest {
         var facade = new AdminFacade(
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 capturedRepo,                        // Facade.upsertShopItem 이 이 repo 호출
+                TestRepos.emptyItemRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 
@@ -99,6 +100,7 @@ class ShopUpsertItemCommandTest {
         var facade = new AdminFacade(
                 List::of, emptyAccountRepo(), emptyPlayerRepo(),
                 capturedRepo,
+                mygame.admin.TestRepos.emptyItemRepo(),
                 recordingAudit(auditEntries),
                 () -> {}, p -> {}, m -> 0);
 

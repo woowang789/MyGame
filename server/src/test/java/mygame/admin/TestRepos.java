@@ -4,10 +4,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import mygame.db.ItemTemplateRepository;
 import mygame.db.ShopRepository;
+import mygame.game.item.EquipSlot;
+import mygame.game.item.ItemRegistry;
+import mygame.game.item.ItemTemplate;
+import mygame.game.item.ItemTemplate.ItemType;
+import mygame.game.item.ItemTemplate.UseEffect;
 import mygame.game.shop.ShopCatalog;
 import mygame.game.shop.ShopCatalog.Entry;
 import mygame.game.shop.ShopRegistry;
+import mygame.game.stat.Stats;
 
 /**
  * 테스트 가짜 헬퍼 모음. AdminFacade ctor 가 늘어날 때마다 모든 테스트의 가짜 구현을
@@ -18,11 +25,46 @@ public final class TestRepos {
     private TestRepos() {}
 
     /**
+     * ItemRegistry 를 기존 코드 상수와 동일한 템플릿으로 1회 부트스트랩.
+     * 게임 측 테스트에서 ItemRegistry.get/.isEquipment 를 호출하기 전에 부른다.
+     */
+    public static void bootstrapDefaultItems() {
+        Map<String, ItemTemplate> seed = new LinkedHashMap<>();
+        put(seed, new ItemTemplate("red_potion", "빨간 포션", 0xe74c3c,
+                ItemType.CONSUMABLE, new UseEffect(30, 0), 25L));
+        put(seed, new ItemTemplate("blue_potion", "파란 포션", 0x3498db,
+                ItemType.CONSUMABLE, new UseEffect(0, 30), 40L));
+        put(seed, new ItemTemplate("snail_shell", "달팽이 껍질", 0xb36836,
+                ItemType.ETC, 5L));
+        put(seed, new ItemTemplate("wooden_sword", "나무 검", 0x8b5a2b,
+                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 10, 0), 750L));
+        put(seed, new ItemTemplate("iron_sword", "철 검", 0xbfc7d5,
+                ItemType.EQUIPMENT, EquipSlot.WEAPON, new Stats(0, 0, 25, 0), 1000L));
+        put(seed, new ItemTemplate("leather_cap", "가죽 모자", 0x6a4e2a,
+                ItemType.EQUIPMENT, EquipSlot.HAT, new Stats(15, 5, 0, 0), 400L));
+        put(seed, new ItemTemplate("cloth_armor", "천 갑옷", 0xcfa16a,
+                ItemType.EQUIPMENT, EquipSlot.ARMOR, new Stats(25, 0, 0, 0), 800L));
+        put(seed, new ItemTemplate("work_gloves", "작업 장갑", 0x7d5b3a,
+                ItemType.EQUIPMENT, EquipSlot.GLOVES, new Stats(0, 0, 4, 0), 200L));
+        put(seed, new ItemTemplate("running_shoes", "달리기 신발", 0x4caf50,
+                ItemType.EQUIPMENT, EquipSlot.SHOES, new Stats(0, 0, 0, 30), 200L));
+        ItemRegistry.bootstrap(new InMemoryItemRepo(seed));
+    }
+
+    private static void put(Map<String, ItemTemplate> m, ItemTemplate t) {
+        m.put(t.id(), t);
+    }
+
+    /**
      * ShopRegistry 를 기존 코드 상수와 동일한 카탈로그로 1회 부트스트랩.
      * 게임 측 ShopServiceTest 등 ShopRegistry.find() 에 의존하는 테스트가 호출.
-     * 멀티 테스트에서 안전하도록 멱등 — 동일 데이터로 재호출.
+     * ShopRegistry.validateAll 이 ItemRegistry.get 을 호출하므로 아이템도 같이 부트스트랩.
      */
+    public static void bootstrapDefaultShopsAndItems() { bootstrapDefaultShops(); }
+
     public static void bootstrapDefaultShops() {
+        // 무결성 검증 chain: shops → ItemRegistry.get. 아이템 캐시가 비어 있으면 실패.
+        bootstrapDefaultItems();
         Map<String, ShopCatalog> seed = new LinkedHashMap<>();
         seed.put("henesys_general", new ShopCatalog("henesys_general", List.of(
                 new Entry("red_potion", 50, 50),
@@ -38,6 +80,18 @@ public final class TestRepos {
         ShopRegistry.bootstrap(new InMemoryShopRepo(new LinkedHashMap<>(catalogs)));
     }
 
+    /** 모든 메서드가 빈 결과/0 을 반환하는 ItemTemplateRepository. */
+    public static ItemTemplateRepository emptyItemRepo() {
+        return new ItemTemplateRepository() {
+            @Override public Optional<ItemTemplate> findById(String itemId) { return Optional.empty(); }
+            @Override public List<ItemTemplate> findAll() { return List.of(); }
+            @Override public Map<String, ItemTemplate> loadAll() { return Map.of(); }
+            @Override public int upsert(ItemTemplate template) { return 0; }
+            @Override public int deleteById(String itemId) { return 0; }
+            @Override public int countShopReferences(String itemId) { return 0; }
+        };
+    }
+
     /** 모든 메서드가 빈 결과/0 을 반환하는 ShopRepository. */
     public static ShopRepository emptyShopRepo() {
         return new ShopRepository() {
@@ -50,6 +104,26 @@ public final class TestRepos {
                                             long price, int stockPerTx, int sortOrder) { return 0; }
             @Override public int deleteItem(String shopId, String itemId) { return 0; }
         };
+    }
+
+    /** 인메모리 ItemTemplateRepository — bootstrapDefaultItems 가 사용. */
+    private static final class InMemoryItemRepo implements ItemTemplateRepository {
+        private final Map<String, ItemTemplate> data;
+        InMemoryItemRepo(Map<String, ItemTemplate> data) { this.data = data; }
+
+        @Override public Optional<ItemTemplate> findById(String itemId) {
+            return Optional.ofNullable(data.get(itemId));
+        }
+        @Override public List<ItemTemplate> findAll() { return List.copyOf(data.values()); }
+        @Override public Map<String, ItemTemplate> loadAll() { return Map.copyOf(data); }
+        @Override public int upsert(ItemTemplate t) {
+            data.put(t.id(), t);
+            return 1;
+        }
+        @Override public int deleteById(String itemId) {
+            return data.remove(itemId) == null ? 0 : 1;
+        }
+        @Override public int countShopReferences(String itemId) { return 0; }
     }
 
     /** 인메모리 ShopRepository — bootstrapShops 가 사용. */

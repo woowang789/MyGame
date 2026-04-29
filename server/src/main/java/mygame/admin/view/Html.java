@@ -48,6 +48,7 @@ public final class Html {
                       <a href="/admin">Dashboard</a>
                       <a href="/admin/accounts">Accounts</a>
                       <a href="/admin/shops">Shops</a>
+                      <a href="/admin/items">Items</a>
                       <a href="/admin/audit">Audit</a>
                       <form method="post" action="/admin/logout" class="logout-form">
                         <button type="submit">Logout</button>

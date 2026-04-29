@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import mygame.game.stat.BaseStats;
 import mygame.game.stat.Stats;
 import mygame.game.stat.StatProvider;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,12 @@ import org.junit.jupiter.api.Test;
  * 슬롯 수 변경에도 깨지지 않음을 회귀 방지한다.
  */
 class EquipmentTest {
+
+    @BeforeAll
+    static void seedItemRegistry() {
+        // ItemRegistry 가 DB-backed 캐시로 바뀐 뒤로는 테스트 시작 시점에 부트스트랩이 필요.
+        mygame.admin.TestRepos.bootstrapDefaultItems();
+    }
 
     @Test
     @DisplayName("빈 장비: decorate(base) 결과는 base 와 동일")

@@ -154,6 +154,53 @@ public final class Migrations {
                             + " VALUES ('henesys_general', 'wooden_sword', 1500,  1, 2)",
                     "INSERT INTO shop_items (shop_id, item_id, price, stock_per_tx, sort_order)"
                             + " VALUES ('henesys_general', 'leather_cap',   800,  1, 3)"
+            )),
+            // 백오피스 Phase 4-2: 아이템 템플릿 DB 화. type=EQUIPMENT 는 slot/bonus_*,
+            // type=CONSUMABLE 은 use_* 가 의미 있고, 그 외엔 0/NULL. ItemTemplate 의 ctor 가
+            // 일관성 검증을 하므로 DB 에는 평탄화된 컬럼만 유지(EAV 회피).
+            new Step(11, "item_templates 테이블", List.of(
+                    """
+                    CREATE TABLE IF NOT EXISTS item_templates (
+                        id VARCHAR(64) PRIMARY KEY,
+                        name VARCHAR(128) NOT NULL,
+                        color INT NOT NULL DEFAULT 0,
+                        type VARCHAR(16) NOT NULL,
+                        slot VARCHAR(16),
+                        bonus_max_hp INT NOT NULL DEFAULT 0,
+                        bonus_max_mp INT NOT NULL DEFAULT 0,
+                        bonus_attack INT NOT NULL DEFAULT 0,
+                        bonus_speed INT NOT NULL DEFAULT 0,
+                        use_heal INT NOT NULL DEFAULT 0,
+                        use_mana_heal INT NOT NULL DEFAULT 0,
+                        sell_price BIGINT NOT NULL DEFAULT 0
+                    )
+                    """
+            )),
+            // v11 직후 1회 시드. 기존 ItemRegistry 코드 상수와 동일한 값.
+            // hex 색상 → INT 변환은 INSERT SQL 에 그대로 0xAABBCC 형태로 표기.
+            new Step(12, "item_templates 시드 (기존 ItemRegistry 상수)", List.of(
+                    // CONSUMABLE: 빨간 포션 (heal=30)
+                    "INSERT INTO item_templates (id, name, color, type, use_heal, sell_price) "
+                            + "VALUES ('red_potion', '빨간 포션', 0xe74c3c, 'CONSUMABLE', 30, 25)",
+                    // CONSUMABLE: 파란 포션 (manaHeal=30)
+                    "INSERT INTO item_templates (id, name, color, type, use_mana_heal, sell_price) "
+                            + "VALUES ('blue_potion', '파란 포션', 0x3498db, 'CONSUMABLE', 30, 40)",
+                    // ETC: 달팽이 껍질
+                    "INSERT INTO item_templates (id, name, color, type, sell_price) "
+                            + "VALUES ('snail_shell', '달팽이 껍질', 0xb36836, 'ETC', 5)",
+                    // EQUIPMENT 시리즈: slot + bonus_*
+                    "INSERT INTO item_templates (id, name, color, type, slot, bonus_attack, sell_price) "
+                            + "VALUES ('wooden_sword', '나무 검', 0x8b5a2b, 'EQUIPMENT', 'WEAPON', 10, 750)",
+                    "INSERT INTO item_templates (id, name, color, type, slot, bonus_attack, sell_price) "
+                            + "VALUES ('iron_sword', '철 검', 0xbfc7d5, 'EQUIPMENT', 'WEAPON', 25, 1000)",
+                    "INSERT INTO item_templates (id, name, color, type, slot, bonus_max_hp, bonus_max_mp, sell_price) "
+                            + "VALUES ('leather_cap', '가죽 모자', 0x6a4e2a, 'EQUIPMENT', 'HAT', 15, 5, 400)",
+                    "INSERT INTO item_templates (id, name, color, type, slot, bonus_max_hp, sell_price) "
+                            + "VALUES ('cloth_armor', '천 갑옷', 0xcfa16a, 'EQUIPMENT', 'ARMOR', 25, 800)",
+                    "INSERT INTO item_templates (id, name, color, type, slot, bonus_attack, sell_price) "
+                            + "VALUES ('work_gloves', '작업 장갑', 0x7d5b3a, 'EQUIPMENT', 'GLOVES', 4, 200)",
+                    "INSERT INTO item_templates (id, name, color, type, slot, bonus_speed, sell_price) "
+                            + "VALUES ('running_shoes', '달리기 신발', 0x4caf50, 'EQUIPMENT', 'SHOES', 30, 200)"
             ))
     );
 

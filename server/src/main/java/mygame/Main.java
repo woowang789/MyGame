@@ -47,6 +47,7 @@ public final class Main {
                 server.accountRepo(),
                 server.playerRepo(),
                 server.shopRepo(),
+                server.itemRepo(),
                 auditRepo,
                 server.periodicSaver()::saveAll,
                 // 킥: 게임 서버 onClose 핸들러를 자연스럽게 트리거하도록 connection.close() 위임.

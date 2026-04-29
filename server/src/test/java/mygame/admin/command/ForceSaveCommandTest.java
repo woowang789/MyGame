@@ -39,6 +39,7 @@ class ForceSaveCommandTest {
                 emptyAccountRepo(),
                 emptyPlayerRepo(),
                 mygame.admin.TestRepos.emptyShopRepo(),
+                mygame.admin.TestRepos.emptyItemRepo(),
                 auditRepo,
                 saveCalls::incrementAndGet,
                 p -> {},

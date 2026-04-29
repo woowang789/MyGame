@@ -92,6 +92,7 @@ class BroadcastNoticeCommandTest {
                 emptyAccountRepo(),
                 emptyPlayerRepo(),
                 mygame.admin.TestRepos.emptyShopRepo(),
+                mygame.admin.TestRepos.emptyItemRepo(),
                 recordingAudit(auditSink),
                 () -> {},
                 p -> {},

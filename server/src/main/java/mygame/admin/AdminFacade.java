@@ -12,11 +12,14 @@ import mygame.auth.PasswordHasher;
 import mygame.auth.PasswordHasher.Hashed;
 import mygame.db.AccountRepository;
 import mygame.db.AccountRepository.AccountSummary;
+import mygame.db.ItemTemplateRepository;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
 import mygame.db.ShopRepository;
 import mygame.db.ShopRepository.ShopSummary;
 import mygame.game.entity.Player;
+import mygame.game.item.ItemRegistry;
+import mygame.game.item.ItemTemplate;
 import mygame.game.shop.ShopCatalog;
 import mygame.game.shop.ShopRegistry;
 
@@ -46,6 +49,7 @@ public final class AdminFacade {
     private final AccountRepository accountRepo;
     private final PlayerRepository playerRepo;
     private final ShopRepository shopRepo;
+    private final ItemTemplateRepository itemRepo;
     private final AuditLogRepository auditRepo;
     /**
      * 강제 저장 액션. 보통 {@code PeriodicSaver::saveAll} 을 가리키지만, 인터페이스 대신
@@ -70,6 +74,7 @@ public final class AdminFacade {
                        AccountRepository accountRepo,
                        PlayerRepository playerRepo,
                        ShopRepository shopRepo,
+                       ItemTemplateRepository itemRepo,
                        AuditLogRepository auditRepo,
                        Runnable saveAllAction,
                        Consumer<Player> kickAction,
@@ -78,6 +83,7 @@ public final class AdminFacade {
         this.accountRepo = accountRepo;
         this.playerRepo = playerRepo;
         this.shopRepo = shopRepo;
+        this.itemRepo = itemRepo;
         this.auditRepo = auditRepo;
         this.saveAllAction = saveAllAction;
         this.kickAction = kickAction;
@@ -262,6 +268,43 @@ public final class AdminFacade {
         int deleted = shopRepo.deleteItem(shopId, itemId);
         ShopRegistry.reload(shopId);
         return deleted;
+    }
+
+    // --- 아이템 템플릿 (Phase 4-2) ---
+
+    public List<ItemTemplate> itemTemplates() {
+        return itemRepo.findAll();
+    }
+
+    public Optional<ItemTemplate> itemTemplate(String itemId) {
+        return itemRepo.findById(itemId);
+    }
+
+    /** upsert 후 캐시 reload — 다음 ItemRegistry.get 호출은 새 값을 본다. */
+    public int upsertItemTemplate(ItemTemplate template) {
+        int updated = itemRepo.upsert(template);
+        ItemRegistry.reload(template.id());
+        return updated;
+    }
+
+    /**
+     * 삭제 결과. {@code shopReferences} 는 삭제 차단 이유를 호출자에게 명시 — 운영자
+     * 사고 방지: 어느 shop_items 가 참조 중인지 알아야 어디를 정리할지 보인다.
+     */
+    public record ItemDeleteResult(boolean deleted, int shopReferences) {}
+
+    /**
+     * 삭제 — shop_items 참조가 0 일 때만 실제 삭제. 0 이 아니면 영속화도 캐시도 건드리지
+     * 않고 차단 사유와 함께 반환.
+     */
+    public ItemDeleteResult deleteItemTemplate(String itemId) {
+        int refs = itemRepo.countShopReferences(itemId);
+        if (refs > 0) {
+            return new ItemDeleteResult(false, refs);
+        }
+        int affected = itemRepo.deleteById(itemId);
+        if (affected > 0) ItemRegistry.reload(itemId); // 캐시에서도 제거
+        return new ItemDeleteResult(affected > 0, 0);
     }
 
     /** dbId(=player_id) 로 인메모리 접속 플레이어 찾기. O(N) 스캔 — admin 빈도라 OK. */

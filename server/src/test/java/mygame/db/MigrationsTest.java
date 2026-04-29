@@ -38,7 +38,7 @@ class MigrationsTest {
         Migrations.apply(db);
 
         int version = Migrations.currentVersion(db);
-        assertTrue(version >= 10, "현재 STEPS 마지막 버전이 적용되어야 함 — got " + version);
+        assertTrue(version >= 12, "현재 STEPS 마지막 버전이 적용되어야 함 — got " + version);
 
         // 기대 컬럼이 실제로 존재하는지 확인
         try (Connection conn = db.getConnection();

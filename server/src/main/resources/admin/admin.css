@@ -227,6 +227,35 @@ section { margin-top: 1.5rem; }
   font-size: 0.8rem;
 }
 .shop-new-row td { background: var(--bg-elev-2); }
+
+.item-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 1rem;
+  align-items: end;
+  max-width: 720px;
+}
+.item-form button[type="submit"] { grid-column: 1 / -1; justify-self: start; padding: 0.45rem 1rem; }
+.item-form .item-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.item-form .item-field input,
+.item-form .item-field select,
+.item-form .item-field output {
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+.item-form .item-field input:focus,
+.item-form .item-field select:focus { outline: 1px solid var(--accent); }
 .row-action button[type="submit"] {
   padding: 0.2rem 0.6rem;
   font-size: 0.8rem;
