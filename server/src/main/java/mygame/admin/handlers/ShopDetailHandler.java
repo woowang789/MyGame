@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.Optional;
 import mygame.admin.AdminFacade;
 import mygame.admin.HttpUtils;
+import mygame.admin.view.FormRenderer;
 import mygame.admin.view.Html;
 import mygame.db.ShopRepository.ShopSummary;
 import mygame.game.shop.ShopCatalog;
@@ -77,7 +78,7 @@ public final class ShopDetailHandler implements HttpHandler {
      */
     private static String renderItemRow(String shopId, String itemId,
                                         long price, int stockPerTx, int sortOrder) {
-        String rowId = "shop-row-" + safeId(itemId);
+        String rowId = "shop-row-" + FormRenderer.safeDomId(itemId);
         StringBuilder sb = new StringBuilder();
         sb.append("<tr id=\"").append(rowId).append("\">")
           .append("<td><code>").append(Html.esc(itemId)).append("</code></td>");
@@ -120,13 +121,4 @@ public final class ShopDetailHandler implements HttpHandler {
                 + "</td></tr>";
     }
 
-    /** itemId 에 들어올 수 있는 문자(영숫자/_) 외에는 _ 로 치환 — DOM id 로 안전. */
-    private static String safeId(String s) {
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            sb.append(Character.isLetterOrDigit(c) || c == '_' || c == '-' ? c : '_');
-        }
-        return sb.toString();
-    }
 }

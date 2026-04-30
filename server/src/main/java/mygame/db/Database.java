@@ -21,15 +21,22 @@ public final class Database implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(Database.class);
 
     private final JdbcConnectionPool pool;
+    private final SqlRunner sqlRunner;
 
     public Database(String url, String user, String password) {
         this.pool = JdbcConnectionPool.create(url, user, password);
         this.pool.setMaxConnections(10);
+        this.sqlRunner = new SqlRunner(this);
         log.info("H2 연결 풀 생성: {}", url);
     }
 
     public Connection getConnection() throws SQLException {
         return pool.getConnection();
+    }
+
+    /** Repository 들이 공유하는 단일 SqlRunner. */
+    public SqlRunner sql() {
+        return sqlRunner;
     }
 
     /**

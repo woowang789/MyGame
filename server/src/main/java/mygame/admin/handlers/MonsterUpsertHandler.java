@@ -3,6 +3,7 @@ package mygame.admin.handlers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import mygame.admin.AdminFacade;
 import mygame.admin.HttpUtils;
@@ -74,7 +75,7 @@ public final class MonsterUpsertHandler implements HttpHandler {
         // 건드리지 않는 upsertTemplate 만 호출. 새 몬스터의 경우 drop 은 빈 상태로 시작.
         DropTable existing = facade.monsterTemplate(id)
                 .map(MonsterTemplate::dropTable)
-                .orElseGet(() -> new DropTable(java.util.List.of()));
+                .orElseGet(() -> new DropTable(List.of()));
         return new MonsterTemplate(id, name, maxHp, atk, atkInterval, speed,
                 exp, respawn, mesoMin, mesoMax, existing, color);
     }

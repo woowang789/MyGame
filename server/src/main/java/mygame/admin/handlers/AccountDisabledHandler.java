@@ -10,6 +10,7 @@ import mygame.admin.audit.AuditLogRepository;
 import mygame.admin.command.SetAccountDisabledCommand;
 import mygame.admin.filter.AuthFilter;
 import mygame.admin.view.Html;
+import mygame.db.AccountRepository.AccountSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,8 +47,7 @@ public final class AccountDisabledHandler implements HttpHandler {
             var cmd = new SetAccountDisabledCommand(facade, accountId, disabled);
             cmd.execute(AuthFilter.sessionOf(ex), audit);
             HttpUtils.sendHtml(ex, 200, AccountsHandler.renderAccountRow(
-                    new mygame.db.AccountRepository.AccountSummary(
-                            accountId, username, null, disabled)));
+                    new AccountSummary(accountId, username, null, disabled)));
         } catch (NumberFormatException nfe) {
             HttpUtils.sendHtml(ex, 400,
                     "<tr><td colspan=\"4\" class=\"error\">" + Html.esc("잘못된 accountId") + "</td></tr>");

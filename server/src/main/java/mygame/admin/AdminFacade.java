@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
+import java.util.function.ToLongFunction;
 import mygame.admin.audit.AuditLogRepository;
 import mygame.auth.PasswordHasher;
 import mygame.auth.PasswordHasher.Hashed;
@@ -160,17 +161,15 @@ public final class AdminFacade {
      * 이 한 번 더 누르면 된다. 프로덕션에서는 single-writer 큐 또는 행 잠금이 필요.
      */
     public AdjustResult adjustMeso(long accountId, long delta) {
-        var data = playerRepo.findByAccountId(accountId);
-        if (data.isEmpty()) return AdjustResult.noPlayer();
-        var snapshot = data.get();
-        Player online = findOnlinePlayerByDbId(snapshot.id());
-        if (online != null) {
-            return AdjustResult.online(online.adjustMeso(delta));
-        }
-        long newMeso = Math.max(0, snapshot.meso() + delta);
-        playerRepo.save(snapshot.id(), snapshot.level(), snapshot.exp(), newMeso,
-                snapshot.hp(), snapshot.mp(), snapshot.items(), snapshot.equipment());
-        return AdjustResult.offline(newMeso);
+        return applyAdjust(
+                accountId,
+                online -> online.adjustMeso(delta),
+                snap -> {
+                    long newMeso = Math.max(0, snap.meso() + delta);
+                    playerRepo.save(snap.id(), snap.level(), snap.exp(), newMeso,
+                            snap.hp(), snap.mp(), snap.items(), snap.equipment());
+                    return newMeso;
+                });
     }
 
     /**
@@ -178,17 +177,36 @@ public final class AdminFacade {
      * 하기 위함. 레벨 자체를 만지는 것은 별도 명령(out of scope).
      */
     public AdjustResult adjustExp(long accountId, int delta) {
+        return applyAdjust(
+                accountId,
+                online -> online.adjustExp(delta),
+                snap -> {
+                    int newExp = Math.max(0, snap.exp() + delta);
+                    playerRepo.save(snap.id(), snap.level(), newExp, snap.meso(),
+                            snap.hp(), snap.mp(), snap.items(), snap.equipment());
+                    return newExp;
+                });
+    }
+
+    /**
+     * "DB 의 player 행을 로드 → 접속 중이면 인메모리 mutate / 아니면 DB 즉시 갱신" 의 공통
+     * 흐름. 호출자는 두 람다만 제공하면 된다 — 같은 분기 보일러를 6회 이상 반복하던 것을
+     * 한 곳에 가둔다.
+     *
+     * <p>{@code onlineOp} 는 인메모리 {@link Player} 에 변경을 가하고 새 값을 돌려준다.
+     * {@code offlineOp} 는 {@link PlayerData} 스냅샷을 받아 DB 에 영속화하고 새 값을 돌려준다.
+     */
+    private AdjustResult applyAdjust(long accountId,
+                                     ToLongFunction<Player> onlineOp,
+                                     ToLongFunction<PlayerData> offlineOp) {
         var data = playerRepo.findByAccountId(accountId);
         if (data.isEmpty()) return AdjustResult.noPlayer();
         var snapshot = data.get();
         Player online = findOnlinePlayerByDbId(snapshot.id());
         if (online != null) {
-            return AdjustResult.online(online.adjustExp(delta));
+            return AdjustResult.online(onlineOp.applyAsLong(online));
         }
-        int newExp = Math.max(0, snapshot.exp() + delta);
-        playerRepo.save(snapshot.id(), snapshot.level(), newExp, snapshot.meso(),
-                snapshot.hp(), snapshot.mp(), snapshot.items(), snapshot.equipment());
-        return AdjustResult.offline(newExp);
+        return AdjustResult.offline(offlineOp.applyAsLong(snapshot));
     }
 
     /**

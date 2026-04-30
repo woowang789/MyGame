@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.Optional;
 import mygame.admin.AdminFacade;
 import mygame.admin.HttpUtils;
+import mygame.admin.view.FormRenderer;
 import mygame.admin.view.Html;
 import mygame.game.item.EquipSlot;
 import mygame.game.item.ItemTemplate;
@@ -85,72 +86,35 @@ public final class ItemDetailHandler implements HttpHandler {
         sb.append("<form hx-post=\"/admin/actions/item-upsert\" hx-target=\"#item-result\" hx-swap=\"innerHTML\" class=\"item-form\">");
         // id 는 새 아이템일 때만 편집 가능 — 변경 시 외래 데이터(인벤토리·드롭 테이블)와의 정합성 깨짐 방지
         if (isNew) {
-            sb.append(field("id", "text", "", "예: red_potion (영숫자_- 권장)", true, "data-new=\"1\""));
+            sb.append(FormRenderer.field("id", "text", "", "예: red_potion (영숫자_- 권장)", true, "data-new=\"1\""));
         } else {
-            sb.append(hidden("id", t.id()));
-            sb.append(displayRow("id", t.id() + " <span class=\"muted\">(고정)</span>"));
+            sb.append(FormRenderer.hidden("id", t.id()));
+            sb.append(FormRenderer.displayRow("id", Html.esc(t.id()) + " <span class=\"muted\">(고정)</span>"));
         }
-        sb.append(field("name", "text", isNew ? "" : t.name(), "표시 이름", true, ""));
-        sb.append(field("color", "text", isNew ? "0xffffff" : String.format("0x%06x", t.color()),
-                "0xRRGGBB", true, ""));
-        sb.append(typeSelect(isNew ? null : t.type()));
-        sb.append(slotSelect(isNew ? null : t.slot()));
+        sb.append(FormRenderer.field("name", "text", isNew ? "" : t.name(), "표시 이름", true));
+        sb.append(FormRenderer.field("color", "text", isNew ? "0xffffff" : String.format("0x%06x", t.color()),
+                "0xRRGGBB", true));
+        sb.append(FormRenderer.select("type", "type", enumNames(ItemType.values()),
+                isNew ? null : t.type().name(), true, null));
+        sb.append(FormRenderer.select("slot", "slot", enumNames(EquipSlot.values()),
+                isNew || t.slot() == null ? "" : t.slot().name(), false, "(없음)"));
         // 장비 보너스
-        sb.append(field("bonus_max_hp", "number", String.valueOf(b.maxHp()), "EQUIPMENT 일 때 maxHp 보너스", false, ""));
-        sb.append(field("bonus_max_mp", "number", String.valueOf(b.maxMp()), "maxMp", false, ""));
-        sb.append(field("bonus_attack", "number", String.valueOf(b.attack()), "attack", false, ""));
-        sb.append(field("bonus_speed", "number", String.valueOf(b.speed()), "speed", false, ""));
+        sb.append(FormRenderer.field("bonus_max_hp", "number", String.valueOf(b.maxHp()), "EQUIPMENT 일 때 maxHp 보너스", false));
+        sb.append(FormRenderer.field("bonus_max_mp", "number", String.valueOf(b.maxMp()), "maxMp", false));
+        sb.append(FormRenderer.field("bonus_attack", "number", String.valueOf(b.attack()), "attack", false));
+        sb.append(FormRenderer.field("bonus_speed", "number", String.valueOf(b.speed()), "speed", false));
         // 소비 효과
-        sb.append(field("use_heal", "number", String.valueOf(useHeal), "CONSUMABLE 회복량", false, ""));
-        sb.append(field("use_mana_heal", "number", String.valueOf(useManaHeal), "MP 회복량", false, ""));
-        sb.append(field("sell_price", "number", isNew ? "0" : String.valueOf(t.sellPrice()), "0=매입 불가", true, ""));
+        sb.append(FormRenderer.field("use_heal", "number", String.valueOf(useHeal), "CONSUMABLE 회복량", false));
+        sb.append(FormRenderer.field("use_mana_heal", "number", String.valueOf(useManaHeal), "MP 회복량", false));
+        sb.append(FormRenderer.field("sell_price", "number", isNew ? "0" : String.valueOf(t.sellPrice()), "0=매입 불가", true));
         sb.append("<button type=\"submit\">").append(isNew ? "추가" : "저장").append("</button>");
         sb.append("</form>");
         return sb.toString();
     }
 
-    private static String field(String name, String type, String value, String hint,
-                                boolean required, String extra) {
-        return "<label class=\"item-field\"><span>" + Html.esc(name) + "</span>"
-                + "<input type=\"" + type + "\" name=\"" + name + "\""
-                + (required ? " required" : "")
-                + " value=\"" + Html.esc(value) + "\""
-                + " placeholder=\"" + Html.esc(hint) + "\""
-                + (extra.isEmpty() ? "" : " " + extra)
-                + "></label>";
-    }
-
-    private static String hidden(String name, String value) {
-        return "<input type=\"hidden\" name=\"" + name + "\" value=\"" + Html.esc(value) + "\">";
-    }
-
-    private static String displayRow(String name, String html) {
-        return "<label class=\"item-field\"><span>" + Html.esc(name) + "</span>"
-                + "<output>" + html + "</output></label>";
-    }
-
-    private static String typeSelect(ItemType current) {
-        StringBuilder sb = new StringBuilder("<label class=\"item-field\"><span>type</span>");
-        sb.append("<select name=\"type\" required>");
-        for (ItemType t : ItemType.values()) {
-            sb.append("<option value=\"").append(t.name()).append("\"")
-              .append(t == current ? " selected" : "")
-              .append(">").append(t.name()).append("</option>");
-        }
-        sb.append("</select></label>");
-        return sb.toString();
-    }
-
-    private static String slotSelect(EquipSlot current) {
-        StringBuilder sb = new StringBuilder("<label class=\"item-field\"><span>slot</span>");
-        sb.append("<select name=\"slot\">");
-        sb.append("<option value=\"\"").append(current == null ? " selected" : "").append(">(없음)</option>");
-        for (EquipSlot s : EquipSlot.values()) {
-            sb.append("<option value=\"").append(s.name()).append("\"")
-              .append(s == current ? " selected" : "")
-              .append(">").append(s.name()).append("</option>");
-        }
-        sb.append("</select></label>");
-        return sb.toString();
+    private static String[] enumNames(Enum<?>[] values) {
+        String[] out = new String[values.length];
+        for (int i = 0; i < values.length; i++) out[i] = values[i].name();
+        return out;
     }
 }

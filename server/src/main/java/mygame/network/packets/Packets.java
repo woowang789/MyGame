@@ -1,5 +1,8 @@
 package mygame.network.packets;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 서버 ↔ 클라이언트 패킷 DTO.
  *
@@ -38,10 +41,10 @@ public final class Packets {
     public record WelcomePacket(
             int playerId,
             PlayerState self,
-            java.util.List<PlayerState> others,
-            java.util.List<MonsterState> monsters,
-            java.util.List<DroppedItemState> items,
-            java.util.List<NpcState> npcs
+            List<PlayerState> others,
+            List<MonsterState> monsters,
+            List<DroppedItemState> items,
+            List<NpcState> npcs
     ) {}
 
     /** 스킬 메타(클라 HUD · 쿨다운 예측용). */
@@ -53,10 +56,10 @@ public final class Packets {
      * 이 패킷으로 초기화된다.
      */
     public record MetaPacket(
-            java.util.List<String> equipmentIds,
-            java.util.List<SkillMetaEntry> skills,
+            List<String> equipmentIds,
+            List<SkillMetaEntry> skills,
             /** 매입가 맵(itemId → 메소). 0 또는 미수록 = 매입 불가. */
-            java.util.Map<String, Long> sellPrices
+            Map<String, Long> sellPrices
     ) {}
 
     /** 다른 플레이어가 맵에 들어왔음을 알리는 브로드캐스트. */
@@ -80,10 +83,10 @@ public final class Packets {
      */
     public record MapChangedPacket(
             String mapId, double x, double y,
-            java.util.List<PlayerState> others,
-            java.util.List<MonsterState> monsters,
-            java.util.List<DroppedItemState> items,
-            java.util.List<NpcState> npcs
+            List<PlayerState> others,
+            List<MonsterState> monsters,
+            List<DroppedItemState> items,
+            List<NpcState> npcs
     ) {}
 
     /** 몬스터의 공개 상태. 스폰/스냅샷 시 클라이언트에게 전달된다. */
@@ -119,7 +122,7 @@ public final class Packets {
     public record ItemRemovedPacket(int id) {}
 
     /** 플레이어 인벤토리 전체 스냅샷(단순화: 증분 대신 풀 싱크). */
-    public record InventoryPacket(java.util.Map<String, Integer> items) {}
+    public record InventoryPacket(Map<String, Integer> items) {}
 
     /** 현재 소지 메소(재화) 알림. 본인에게만 전송. gained 는 이번 변화량(획득 +, 소비 -). */
     public record MesoUpdatedPacket(long meso, long gained) {}
@@ -158,7 +161,7 @@ public final class Packets {
      * 플레이어 장비 전체 스냅샷. 본인 갱신 · 타인에게 외형 동기화 모두에 쓰인다.
      * slots 는 slot enum 이름 → 아이템 템플릿 ID.
      */
-    public record EquipmentPacket(int playerId, java.util.Map<String, String> slots) {}
+    public record EquipmentPacket(int playerId, Map<String, String> slots) {}
 
     /**
      * 최종 스탯(장비 포함) 알림. 본인에게만 전송. 현재 hp/mp 포함.
@@ -217,7 +220,7 @@ public final class Packets {
 
     /** 상점 열기 응답 — 본인에게만. 카탈로그 + 현재 보유 메소를 함께 전달. */
     public record ShopOpenedPacket(String shopId, String npcName,
-                                   java.util.List<ShopCatalogEntry> items, long meso) {}
+                                   List<ShopCatalogEntry> items, long meso) {}
 
     /** 클라가 N 개를 구매. */
     public record ShopBuyRequest(String shopId, String itemId, int qty) {}

@@ -3,16 +3,24 @@ package mygame.network;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.InetSocketAddress;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import mygame.auth.AuthService;
 import mygame.db.AccountRepository;
 import mygame.db.Database;
+import mygame.db.ItemTemplateRepository;
 import mygame.db.JdbcAccountRepository;
+import mygame.db.JdbcItemTemplateRepository;
+import mygame.db.JdbcMonsterTemplateRepository;
 import mygame.db.JdbcPlayerRepository;
+import mygame.db.JdbcShopRepository;
+import mygame.db.MonsterTemplateRepository;
 import mygame.db.PlayerRepository;
 import mygame.db.PlayerRepository.PlayerData;
+import mygame.db.ShopRepository;
 import mygame.game.CombatService;
 import mygame.game.GameLoop;
 import mygame.game.GameMap;
@@ -20,8 +28,10 @@ import mygame.game.MovementValidator;
 import mygame.game.ProgressionSystem;
 import mygame.game.World;
 import mygame.game.entity.Monster;
+import mygame.game.entity.MonsterRegistry;
 import mygame.game.entity.Npc;
 import mygame.game.entity.Player;
+import mygame.game.shop.ShopRegistry;
 import mygame.game.event.EventBus;
 import mygame.game.event.GameEvent;
 import mygame.game.event.GameEvent.ExpGained;
@@ -46,6 +56,7 @@ import mygame.network.packets.Packets.PlayerCorrectedPacket;
 import mygame.network.packets.Packets.PlayerJoinedPacket;
 import mygame.network.packets.Packets.PlayerLeftPacket;
 import mygame.network.packets.Packets.PlayerMovedPacket;
+import mygame.network.packets.Packets.SystemNoticePacket;
 import mygame.network.packets.Packets.WelcomePacket;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -84,9 +95,9 @@ public final class GameServer extends WebSocketServer {
     private final Database database;
     private final PlayerRepository playerRepo;
     private final AccountRepository accountRepo;
-    private final mygame.db.ShopRepository shopRepo;
-    private final mygame.db.ItemTemplateRepository itemRepo;
-    private final mygame.db.MonsterTemplateRepository monsterRepo;
+    private final ShopRepository shopRepo;
+    private final ItemTemplateRepository itemRepo;
+    private final MonsterTemplateRepository monsterRepo;
     private final AuthSessions auth;
     private final PacketDispatcher dispatcher = new PacketDispatcher(json);
     private final SessionNotifier notifier = new SessionNotifier(json);
@@ -115,17 +126,17 @@ public final class GameServer extends WebSocketServer {
         this.database.runMigrations();
         this.playerRepo = new JdbcPlayerRepository(database);
         this.accountRepo = new JdbcAccountRepository(database);
-        this.shopRepo = new mygame.db.JdbcShopRepository(database);
-        this.itemRepo = new mygame.db.JdbcItemTemplateRepository(database);
-        this.monsterRepo = new mygame.db.JdbcMonsterTemplateRepository(database);
+        this.shopRepo = new JdbcShopRepository(database);
+        this.itemRepo = new JdbcItemTemplateRepository(database);
+        this.monsterRepo = new JdbcMonsterTemplateRepository(database);
         // 부트스트랩 순서:
         //  1) ItemRegistry — 다른 두 레지스트리가 itemId 를 검증할 때 의존.
         //  2) MonsterRegistry — drop table 이 itemId 를 참조.
         //  3) ShopRegistry — shop_items 가 itemId 를 참조.
         // 이 순서가 깨지면 validateAll 이 즉시 실패해 빠르게 알린다.
-        mygame.game.item.ItemRegistry.bootstrap(this.itemRepo);
-        mygame.game.entity.MonsterRegistry.bootstrap(this.monsterRepo);
-        mygame.game.shop.ShopRegistry.bootstrap(this.shopRepo);
+        ItemRegistry.bootstrap(this.itemRepo);
+        MonsterRegistry.bootstrap(this.monsterRepo);
+        ShopRegistry.bootstrap(this.shopRepo);
         // World 는 SpawnPoint 검증 시 MonsterRegistry 를 호출하므로 위 bootstrap 다음에 초기화.
         this.world = new World(json);
         this.gameLoop = new GameLoop(world);
@@ -137,7 +148,7 @@ public final class GameServer extends WebSocketServer {
         this.auth = new AuthSessions(new AuthService(accountRepo), json);
         this.world.setCombatListener(new PlayerCombatHandler(world, notifier::sendStats));
         this.periodicSaver = new PeriodicSaver(playerRepo,
-                () -> java.util.List.copyOf(sessionPlayers.values()),
+                () -> List.copyOf(sessionPlayers.values()),
                 AUTOSAVE_INTERVAL_SECONDS);
         registerHandlers();
     }
@@ -257,23 +268,23 @@ public final class GameServer extends WebSocketServer {
     // --- 백오피스 접근용 게터 (admin 모듈 한정 — 외부 패키지에서 도메인을 직접
     // 만지지 않고, AdminFacade 가 이들을 조립한다). 게임 핸들러는 본 게터들을 호출하지 않는다. ---
 
-    public mygame.db.Database database() { return database; }
+    public Database database() { return database; }
 
-    public mygame.db.AccountRepository accountRepo() { return accountRepo; }
+    public AccountRepository accountRepo() { return accountRepo; }
 
-    public mygame.db.PlayerRepository playerRepo() { return playerRepo; }
+    public PlayerRepository playerRepo() { return playerRepo; }
 
-    public mygame.db.ShopRepository shopRepo() { return shopRepo; }
+    public ShopRepository shopRepo() { return shopRepo; }
 
-    public mygame.db.ItemTemplateRepository itemRepo() { return itemRepo; }
+    public ItemTemplateRepository itemRepo() { return itemRepo; }
 
-    public mygame.db.MonsterTemplateRepository monsterRepo() { return monsterRepo; }
+    public MonsterTemplateRepository monsterRepo() { return monsterRepo; }
 
     public PeriodicSaver periodicSaver() { return periodicSaver; }
 
     /** 현재 접속 중인 플레이어 스냅샷(불변 복사). admin 화면 등 외부 관찰자 전용. */
-    public java.util.Collection<mygame.game.entity.Player> onlinePlayersSnapshot() {
-        return java.util.List.copyOf(sessionPlayers.values());
+    public Collection<Player> onlinePlayersSnapshot() {
+        return List.copyOf(sessionPlayers.values());
     }
 
     /**
@@ -286,9 +297,9 @@ public final class GameServer extends WebSocketServer {
      */
     public int broadcastSystemNotice(String message) {
         String payload = PacketEnvelope.wrap(json, "SYSTEM_NOTICE",
-                new mygame.network.packets.Packets.SystemNoticePacket(message));
+                new SystemNoticePacket(message));
         int sent = 0;
-        for (mygame.game.entity.Player p : sessionPlayers.values()) {
+        for (Player p : sessionPlayers.values()) {
             if (p.connection() != null && p.connection().isOpen()) {
                 p.connection().send(payload);
                 sent++;

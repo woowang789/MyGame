@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.Optional;
 import mygame.admin.AdminFacade;
 import mygame.admin.HttpUtils;
+import mygame.admin.view.FormRenderer;
 import mygame.admin.view.Html;
 import mygame.game.entity.MonsterTemplate;
 import mygame.game.item.DropTable.Entry;
@@ -86,28 +87,28 @@ public final class MonsterDetailHandler implements HttpHandler {
         StringBuilder sb = new StringBuilder();
         sb.append("<form hx-post=\"/admin/actions/monster-upsert\" hx-target=\"#monster-result\" hx-swap=\"innerHTML\" class=\"item-form\">");
         if (isNew) {
-            sb.append(field("id", "text", "", "예: blue_snail", true));
+            sb.append(FormRenderer.field("id", "text", "", "예: blue_snail", true));
         } else {
-            sb.append(hidden("id", m.id()));
-            sb.append(displayRow("id", m.id() + " <span class=\"muted\">(고정)</span>"));
+            sb.append(FormRenderer.hidden("id", m.id()));
+            sb.append(FormRenderer.displayRow("id", Html.esc(m.id()) + " <span class=\"muted\">(고정)</span>"));
         }
-        sb.append(field("display_name", "text", isNew ? "" : m.displayName(), "표시 이름", true));
-        sb.append(field("max_hp", "number", isNew ? "100" : String.valueOf(m.maxHp()), "최대 HP", true));
-        sb.append(field("attack_damage", "number", isNew ? "10" : String.valueOf(m.attackDamage()), "접촉 피해", true));
-        sb.append(field("attack_interval_ms", "number", isNew ? "1500" : String.valueOf(m.attackIntervalMs()), "공격 주기 ms", true));
-        sb.append(field("speed", "number", isNew ? "60" : String.valueOf(m.speed()), "이동 속도", true));
-        sb.append(field("exp_reward", "number", isNew ? "10" : String.valueOf(m.expReward()), "처치 EXP", true));
-        sb.append(field("respawn_delay_ms", "number", isNew ? "5000" : String.valueOf(m.respawnDelayMs()), "리스폰 ms", true));
-        sb.append(field("meso_min", "number", isNew ? "1" : String.valueOf(m.mesoMin()), "메소 최소", true));
-        sb.append(field("meso_max", "number", isNew ? "10" : String.valueOf(m.mesoMax()), "메소 최대", true));
-        sb.append(field("body_color", "text", isNew ? "0xffffff" : String.format("0x%06x", m.bodyColor()), "0xRRGGBB", true));
+        sb.append(FormRenderer.field("display_name", "text", isNew ? "" : m.displayName(), "표시 이름", true));
+        sb.append(FormRenderer.field("max_hp", "number", isNew ? "100" : String.valueOf(m.maxHp()), "최대 HP", true));
+        sb.append(FormRenderer.field("attack_damage", "number", isNew ? "10" : String.valueOf(m.attackDamage()), "접촉 피해", true));
+        sb.append(FormRenderer.field("attack_interval_ms", "number", isNew ? "1500" : String.valueOf(m.attackIntervalMs()), "공격 주기 ms", true));
+        sb.append(FormRenderer.field("speed", "number", isNew ? "60" : String.valueOf(m.speed()), "이동 속도", true));
+        sb.append(FormRenderer.field("exp_reward", "number", isNew ? "10" : String.valueOf(m.expReward()), "처치 EXP", true));
+        sb.append(FormRenderer.field("respawn_delay_ms", "number", isNew ? "5000" : String.valueOf(m.respawnDelayMs()), "리스폰 ms", true));
+        sb.append(FormRenderer.field("meso_min", "number", isNew ? "1" : String.valueOf(m.mesoMin()), "메소 최소", true));
+        sb.append(FormRenderer.field("meso_max", "number", isNew ? "10" : String.valueOf(m.mesoMax()), "메소 최대", true));
+        sb.append(FormRenderer.field("body_color", "text", isNew ? "0xffffff" : String.format("0x%06x", m.bodyColor()), "0xRRGGBB", true));
         sb.append("<button type=\"submit\">").append(isNew ? "추가" : "저장").append("</button>");
         sb.append("</form>");
         return sb.toString();
     }
 
     private static String renderDropRow(String monsterId, String itemId, double chance, int sortOrder) {
-        String rowId = "drop-row-" + safe(monsterId + "-" + itemId);
+        String rowId = "drop-row-" + FormRenderer.safeDomId(monsterId + "-" + itemId);
         StringBuilder sb = new StringBuilder();
         sb.append("<tr id=\"").append(rowId).append("\">")
           .append("<td><code>").append(Html.esc(itemId)).append("</code></td>")
@@ -146,31 +147,4 @@ public final class MonsterDetailHandler implements HttpHandler {
                 + "</td></tr>";
     }
 
-    // --- 작은 폼 helper (ItemDetailHandler 와 일관) ---
-
-    private static String field(String name, String type, String value, String hint, boolean required) {
-        return "<label class=\"item-field\"><span>" + Html.esc(name) + "</span>"
-                + "<input type=\"" + type + "\" name=\"" + name + "\""
-                + (required ? " required" : "")
-                + " value=\"" + Html.esc(value) + "\""
-                + " placeholder=\"" + Html.esc(hint) + "\""
-                + "></label>";
-    }
-
-    private static String hidden(String name, String value) {
-        return "<input type=\"hidden\" name=\"" + name + "\" value=\"" + Html.esc(value) + "\">";
-    }
-
-    private static String displayRow(String name, String html) {
-        return "<label class=\"item-field\"><span>" + Html.esc(name) + "</span><output>" + html + "</output></label>";
-    }
-
-    private static String safe(String s) {
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            sb.append(Character.isLetterOrDigit(c) || c == '_' || c == '-' ? c : '_');
-        }
-        return sb.toString();
-    }
 }

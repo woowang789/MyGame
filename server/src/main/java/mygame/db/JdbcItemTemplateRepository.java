@@ -1,10 +1,7 @@
 package mygame.db;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,39 +19,26 @@ public final class JdbcItemTemplateRepository implements ItemTemplateRepository 
             "id, name, color, type, slot, bonus_max_hp, bonus_max_mp, bonus_attack, bonus_speed,"
             + " use_heal, use_mana_heal, sell_price";
 
-    private final Database db;
+    private final SqlRunner sql;
 
     public JdbcItemTemplateRepository(Database db) {
-        this.db = db;
+        this.sql = db.sql();
     }
 
     @Override
     public Optional<ItemTemplate> findById(String itemId) {
-        String sql = "SELECT " + COLUMNS + " FROM item_templates WHERE id = ?";
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, itemId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return Optional.empty();
-                return Optional.of(map(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("findById 실패: id=" + itemId, e);
-        }
+        return sql.queryOne(
+                "SELECT " + COLUMNS + " FROM item_templates WHERE id = ?",
+                ps -> ps.setString(1, itemId),
+                JdbcItemTemplateRepository::map);
     }
 
     @Override
     public List<ItemTemplate> findAll() {
-        List<ItemTemplate> out = new ArrayList<>();
-        String sql = "SELECT " + COLUMNS + " FROM item_templates ORDER BY id ASC";
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) out.add(map(rs));
-        } catch (SQLException e) {
-            throw new RuntimeException("findAll 실패", e);
-        }
-        return out;
+        return sql.queryList(
+                "SELECT " + COLUMNS + " FROM item_templates ORDER BY id ASC",
+                SqlBinder.NONE,
+                JdbcItemTemplateRepository::map);
     }
 
     @Override
@@ -66,58 +50,43 @@ public final class JdbcItemTemplateRepository implements ItemTemplateRepository 
 
     @Override
     public int upsert(ItemTemplate t) {
-        String sql = "MERGE INTO item_templates "
-                + "(id, name, color, type, slot,"
-                + " bonus_max_hp, bonus_max_mp, bonus_attack, bonus_speed,"
-                + " use_heal, use_mana_heal, sell_price) "
-                + "KEY(id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, t.id());
-            ps.setString(2, t.name());
-            ps.setInt(3, t.color());
-            ps.setString(4, t.type().name());
-            ps.setString(5, t.slot() == null ? null : t.slot().name());
-            // null 인 bonus/use 는 0 으로 평탄화 — DB 컬럼이 NOT NULL DEFAULT 0.
-            Stats b = t.bonus();
-            ps.setInt(6, b == null ? 0 : b.maxHp());
-            ps.setInt(7, b == null ? 0 : b.maxMp());
-            ps.setInt(8, b == null ? 0 : b.attack());
-            ps.setInt(9, b == null ? 0 : b.speed());
-            UseEffect u = t.use();
-            ps.setInt(10, u == null ? 0 : u.heal());
-            ps.setInt(11, u == null ? 0 : u.manaHeal());
-            ps.setLong(12, t.sellPrice());
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("upsert 실패: id=" + t.id(), e);
-        }
+        return sql.update(
+                "MERGE INTO item_templates "
+                        + "(id, name, color, type, slot,"
+                        + " bonus_max_hp, bonus_max_mp, bonus_attack, bonus_speed,"
+                        + " use_heal, use_mana_heal, sell_price) "
+                        + "KEY(id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ps -> {
+                    ps.setString(1, t.id());
+                    ps.setString(2, t.name());
+                    ps.setInt(3, t.color());
+                    ps.setString(4, t.type().name());
+                    ps.setString(5, t.slot() == null ? null : t.slot().name());
+                    // null 인 bonus/use 는 0 으로 평탄화 — DB 컬럼이 NOT NULL DEFAULT 0.
+                    Stats b = t.bonus();
+                    ps.setInt(6, b == null ? 0 : b.maxHp());
+                    ps.setInt(7, b == null ? 0 : b.maxMp());
+                    ps.setInt(8, b == null ? 0 : b.attack());
+                    ps.setInt(9, b == null ? 0 : b.speed());
+                    UseEffect u = t.use();
+                    ps.setInt(10, u == null ? 0 : u.heal());
+                    ps.setInt(11, u == null ? 0 : u.manaHeal());
+                    ps.setLong(12, t.sellPrice());
+                });
     }
 
     @Override
     public int deleteById(String itemId) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "DELETE FROM item_templates WHERE id = ?")) {
-            ps.setString(1, itemId);
-            return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("deleteById 실패: id=" + itemId, e);
-        }
+        return sql.update(
+                "DELETE FROM item_templates WHERE id = ?",
+                ps -> ps.setString(1, itemId));
     }
 
     @Override
     public int countShopReferences(String itemId) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "SELECT COUNT(*) FROM shop_items WHERE item_id = ?")) {
-            ps.setString(1, itemId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("countShopReferences 실패: id=" + itemId, e);
-        }
+        return (int) sql.queryLong(
+                "SELECT COUNT(*) FROM shop_items WHERE item_id = ?",
+                ps -> ps.setString(1, itemId));
     }
 
     /**

@@ -1,6 +1,7 @@
 package mygame.auth;
 
 import java.util.Optional;
+import java.util.regex.Pattern;
 import mygame.db.AccountRepository;
 import mygame.db.AccountRepository.Account;
 
@@ -13,8 +14,8 @@ import mygame.db.AccountRepository.Account;
 public final class AuthService {
 
     /** 3~16자 영숫자/언더스코어/하이픈. 스페이스·한글은 거절. */
-    private static final java.util.regex.Pattern USERNAME_REGEX =
-            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{3,16}$");
+    private static final Pattern USERNAME_REGEX =
+            Pattern.compile("^[A-Za-z0-9_-]{3,16}$");
     private static final int MIN_PASSWORD_LEN = 6;
 
     private final AccountRepository accountRepo;

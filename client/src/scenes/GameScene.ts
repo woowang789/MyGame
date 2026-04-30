@@ -1,9 +1,14 @@
 import Phaser from 'phaser';
 import type { AuthedSession } from '../auth/LoginScreen';
-import { DroppedItemSprite } from '../entities/DroppedItemSprite';
 import { MonsterSprite } from '../entities/MonsterSprite';
 import { NpcSprite } from '../entities/NpcSprite';
-import { RemotePlayer } from '../entities/RemotePlayer';
+import {
+  EntityRegistry,
+  type DroppedItemSnapshot,
+  type MonsterSnapshot,
+  type NpcSnapshot,
+  type RemoteSnapshot
+} from '../game/EntityRegistry';
 import type { WebSocketClient, Packet } from '../network/WebSocketClient';
 import { ChatController } from '../ui/ChatController';
 import { EffectFactory } from '../ui/EffectFactory';
@@ -31,36 +36,11 @@ const NPC_INTERACT_RANGE = 80;
 
 const MAPS = ['henesys', 'ellinia'] as const;
 
-interface PlayerStateMsg {
-  id: number;
-  name: string;
-  x: number;
-  y: number;
-}
-
-interface MonsterStateMsg {
-  id: number;
-  template: string;
-  x: number;
-  y: number;
-  hp: number;
-  maxHp: number;
-}
-
-interface DroppedItemMsg {
-  id: number;
-  templateId: string;
-  x: number;
-  y: number;
-}
-
-interface NpcStateMsg {
-  id: number;
-  name: string;
-  x: number;
-  y: number;
-  shopId: string;
-}
+// 서버 패킷 DTO 는 EntityRegistry 의 Snapshot 타입을 그대로 재사용 — 두 군데 정의를 중복 유지하지 않는다.
+type PlayerStateMsg = RemoteSnapshot;
+type MonsterStateMsg = MonsterSnapshot;
+type DroppedItemMsg = DroppedItemSnapshot;
+type NpcStateMsg = NpcSnapshot;
 
 /**
  * Phase D — 다중 맵 + 포털 전환.
@@ -82,10 +62,7 @@ export class GameScene extends Phaser.Scene {
   private lastMoveSentAt = 0;
   private myId = -1;
   private readonly playerName: string;
-  private readonly remotes = new Map<number, RemotePlayer>();
-  private readonly monsters = new Map<number, MonsterSprite>();
-  private readonly droppedItems = new Map<number, DroppedItemSprite>();
-  private readonly npcs = new Map<number, NpcSprite>();
+  private entities!: EntityRegistry;
   /** 현재 상점 창에 열려있는 shopId. null 이면 닫힘 — 결과 패킷 라우팅에 사용. */
   private openShopId: string | null = null;
   private lastPickupAttemptAt = 0;
@@ -204,6 +181,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    this.entities = new EntityRegistry(this);
     this.mapController = new MapController(this, this.player);
     this.mapController.loadMap(this.currentMapId);
     this.setupNetwork();
@@ -270,47 +248,35 @@ export class GameScene extends Phaser.Scene {
     this.myId = p.playerId as number;
     const self = p.self as PlayerStateMsg;
     this.player.setPosition(self.x, self.y);
-    const others = (p.others ?? []) as PlayerStateMsg[];
-    for (const o of others) this.spawnRemote(o);
-    const ms = (p.monsters ?? []) as MonsterStateMsg[];
-    for (const m of ms) this.spawnMonster(m);
-    const items = (p.items ?? []) as DroppedItemMsg[];
-    for (const it of items) this.spawnItem(it);
-    const npcs = (p.npcs ?? []) as NpcStateMsg[];
-    for (const n of npcs) this.spawnNpc(n);
+    for (const o of (p.others ?? []) as PlayerStateMsg[]) this.entities.spawnRemote(o);
+    for (const m of (p.monsters ?? []) as MonsterStateMsg[]) this.entities.spawnMonster(m);
+    for (const it of (p.items ?? []) as DroppedItemMsg[]) this.entities.spawnDroppedItem(it);
+    for (const n of (p.npcs ?? []) as NpcStateMsg[]) this.spawnNpc(n);
   }
 
   private onPlayerJoin(p: Packet): void {
     const ps = p.player as PlayerStateMsg;
     if (ps.id === this.myId) return;
-    this.spawnRemote(ps);
+    this.entities.spawnRemote(ps);
   }
 
   private onPlayerMove(p: Packet): void {
     const id = p.id as number;
     if (id === this.myId) return;
-    this.remotes.get(id)?.setTarget(p.x as number, p.y as number);
+    this.entities.moveRemote(id, p.x as number, p.y as number);
   }
 
   private onPlayerLeave(p: Packet): void {
-    const id = p.id as number;
-    const r = this.remotes.get(id);
-    if (!r) return;
-    r.destroy();
-    this.remotes.delete(id);
+    this.entities.removeRemote(p.id as number);
   }
 
   private onMapChanged(p: Packet): void {
     const mapId = p.mapId as string;
     const x = p.x as number;
     const y = p.y as number;
-    const others = (p.others ?? []) as PlayerStateMsg[];
 
-    // 원격 플레이어·몬스터 모두 제거 후 새 맵 스냅샷으로 교체
-    for (const r of this.remotes.values()) r.destroy();
-    this.remotes.clear();
-    for (const m of this.monsters.values()) m.destroy();
-    this.monsters.clear();
+    // 모든 인메모리 엔티티 폐기 후 새 맵 스냅샷으로 교체
+    this.entities.clearAll();
 
     this.currentMapId = mapId;
     this.mapController.loadMap(mapId);
@@ -324,33 +290,22 @@ export class GameScene extends Phaser.Scene {
 
     // 맵 전환 직전 누르고 있던 방향키가 새 맵에서 그대로 이동 명령으로 흘러
     // 스폰 지점에서 멈추지 않고 맵 끝까지 달려가는 문제 방지.
-    // 사용자가 키를 한 번 떼었다 다시 눌러야 이동이 재개된다.
     this.cursors.left.reset();
     this.cursors.right.reset();
     this.cursors.up.reset();
     this.cursors.down.reset();
 
-    for (const o of others) this.spawnRemote(o);
-    const ms = (p.monsters ?? []) as MonsterStateMsg[];
-    for (const m of ms) this.spawnMonster(m);
-    for (const d of this.droppedItems.values()) d.destroy();
-    this.droppedItems.clear();
-    const items = (p.items ?? []) as DroppedItemMsg[];
-    for (const it of items) this.spawnItem(it);
-    for (const n of this.npcs.values()) n.destroy();
-    this.npcs.clear();
-    const npcs = (p.npcs ?? []) as NpcStateMsg[];
-    for (const n of npcs) this.spawnNpc(n);
+    for (const o of (p.others ?? []) as PlayerStateMsg[]) this.entities.spawnRemote(o);
+    for (const m of (p.monsters ?? []) as MonsterStateMsg[]) this.entities.spawnMonster(m);
+    for (const it of (p.items ?? []) as DroppedItemMsg[]) this.entities.spawnDroppedItem(it);
+    for (const n of (p.npcs ?? []) as NpcStateMsg[]) this.spawnNpc(n);
   }
 
   private spawnNpc(n: NpcStateMsg): void {
-    if (this.npcs.has(n.id)) return;
     // 클릭 콜백은 F 키와 동일한 경로(tryOpenShop) — 거리 검증·패킷 송신을 한 곳에 둔다.
-    const sprite = new NpcSprite(this, n.id, n.name, n.shopId, n.x, n.y, (npc) =>
-      this.tryOpenShop(npc)
-    );
-    this.npcs.set(n.id, sprite);
+    this.entities.spawnNpc(n, (npc) => this.tryOpenShop(npc));
   }
+
 
   /**
    * NPC 와 대화를 시도. F 키(가까이 있을 때만, nearestNpc 가 거름) 와 마우스 클릭(거리
@@ -365,69 +320,31 @@ export class GameScene extends Phaser.Scene {
 
   /** 플레이어 위치 기준 가장 가까운 NPC. INTERACT_RANGE 안에 없으면 null. */
   private nearestNpc(): NpcSprite | null {
-    let best: NpcSprite | null = null;
-    let bestDist = NPC_INTERACT_RANGE;
-    for (const n of this.npcs.values()) {
-      const dx = n.sprite.x - this.player.x;
-      const dy = n.sprite.y - this.player.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= bestDist) {
-        bestDist = d;
-        best = n;
-      }
-    }
-    return best;
-  }
-
-  private spawnRemote(ps: PlayerStateMsg): void {
-    if (this.remotes.has(ps.id)) return;
-    this.remotes.set(
-      ps.id,
-      new RemotePlayer(this, ps.id, ps.name, ps.x, ps.y, PLAYER_TEXTURE)
-    );
-  }
-
-  private spawnMonster(ms: MonsterStateMsg): void {
-    if (this.monsters.has(ms.id)) return;
-    this.monsters.set(ms.id, new MonsterSprite(this, ms.id, ms.template, ms.x, ms.y, ms.hp, ms.maxHp));
+    return this.entities.nearestNpc(this.player.x, this.player.y, NPC_INTERACT_RANGE);
   }
 
   private onMonsterMove(p: Packet): void {
-    this.monsters.get(p.id as number)?.setTarget(p.x as number, p.vx as number);
+    this.entities.moveMonster(p.id as number, p.x as number, p.vx as number);
   }
 
   private onMonsterDamaged(p: Packet): void {
-    const m = this.monsters.get(p.id as number);
-    if (!m) return;
-    m.applyDamage(p.hp as number, this, p.dmg as number);
+    this.entities.damageMonster(p.id as number, p.hp as number, p.dmg as number);
   }
 
   private onMonsterDied(p: Packet): void {
-    const id = p.id as number;
-    const m = this.monsters.get(id);
-    if (!m) return;
-    m.destroy();
-    this.monsters.delete(id);
+    this.entities.removeMonster(p.id as number);
   }
 
   private onMonsterSpawn(p: Packet): void {
-    const monster = p.monster as MonsterStateMsg;
-    this.spawnMonster(monster);
-  }
-
-  private spawnItem(ms: DroppedItemMsg): void {
-    if (this.droppedItems.has(ms.id)) return;
-    this.droppedItems.set(ms.id, new DroppedItemSprite(this, ms.id, ms.templateId, ms.x, ms.y));
+    this.entities.spawnMonster(p.monster as MonsterStateMsg);
   }
 
   private onItemDropped(p: Packet): void {
-    this.spawnItem(p.item as DroppedItemMsg);
+    this.entities.spawnDroppedItem(p.item as DroppedItemMsg);
   }
 
   private onItemRemoved(p: Packet): void {
-    const id = p.id as number;
-    this.droppedItems.get(id)?.destroy();
-    this.droppedItems.delete(id);
+    this.entities.removeDroppedItem(p.id as number);
   }
 
   private onInventory(p: Packet): void {
@@ -494,13 +411,8 @@ export class GameScene extends Phaser.Scene {
     const currentHp = p.currentHp as number;
     const maxHp = p.maxHp as number;
     // 본인은 STATS 패킷이 별도로 오므로 바 갱신은 거기에 맡긴다. 시각 효과만.
-    const x = playerId === this.myId
-      ? this.player.x
-      : this.remotes.get(playerId)?.sprite.x ?? 0;
-    const y = playerId === this.myId
-      ? this.player.y
-      : this.remotes.get(playerId)?.sprite.y ?? 0;
-    this.effects.spawnDamageNumber(x, y - 28, dmg);
+    const pos = this.playerOrRemotePos(playerId);
+    this.effects.spawnDamageNumber(pos.x, pos.y - 28, dmg);
     if (playerId === this.myId) {
       this.effects.flashSpriteDamage(this.player);
       this.hud.updateHpImmediate(currentHp, maxHp);
@@ -516,7 +428,7 @@ export class GameScene extends Phaser.Scene {
   private applyPlayerKnockback(attackerId: number): void {
     // attackerId 가 음수면 몬스터. 몬스터 id = -attackerId.
     const monsterId = attackerId < 0 ? -attackerId : attackerId;
-    const monster = this.monsters.get(monsterId);
+    const monster = this.entities.monster(monsterId);
     const attackerX = monster ? monster.sprite.x : this.player.x;
     const dir = this.player.x >= attackerX ? 1 : -1;
     this.player.setVelocityX(dir * KNOCKBACK_SPEED_X);
@@ -535,7 +447,7 @@ export class GameScene extends Phaser.Scene {
       // 정지 상태로 고정. 서버도 사망 중 MOVE 를 무시하므로 클라 예측도 멈춘다.
       this.player.setVelocity(0, 0);
     } else {
-      const r = this.remotes.get(playerId);
+      const r = this.entities.remote(playerId);
       if (r) {
         r.sprite.setTint(0x555555);
         r.sprite.setAlpha(0.5);
@@ -555,13 +467,19 @@ export class GameScene extends Phaser.Scene {
       this.player.setVelocity(0, 0);
       this.player.setPosition(x, y);
     } else {
-      const r = this.remotes.get(playerId);
+      const r = this.entities.remote(playerId);
       if (r) {
         r.sprite.clearTint();
         r.sprite.setAlpha(1);
         r.setTarget(x, y);
       }
     }
+  }
+
+  /** 본인이면 player, 아니면 원격 플레이어 좌표. 원격이 없으면 (0,0). */
+  private playerOrRemotePos(playerId: number): { x: number; y: number } {
+    if (playerId === this.myId) return { x: this.player.x, y: this.player.y };
+    return this.entities.remotePosition(playerId) ?? { x: 0, y: 0 };
   }
 
   /**
@@ -606,12 +524,7 @@ export class GameScene extends Phaser.Scene {
     const playerId = p.playerId as number;
     const skillId = p.skillId as string;
     const dir = (p.dir as string) ?? 'right';
-    const x = playerId === this.myId
-      ? this.player.x
-      : this.remotes.get(playerId)?.sprite.x ?? 0;
-    const y = playerId === this.myId
-      ? this.player.y
-      : this.remotes.get(playerId)?.sprite.y ?? 0;
+    const { x, y } = this.playerOrRemotePos(playerId);
     if (skillId === 'basic_attack') {
       // 본인은 입력 즉시 슬래시를 이미 그렸으므로 중복 렌더 방지.
       // 다른 플레이어의 기본 공격은 같은 슬래시 이펙트로 시각화한다.
@@ -650,8 +563,7 @@ export class GameScene extends Phaser.Scene {
     //  - 사망 중
     if (inputFocused || shopOpen || this.isDead) {
       this.player.setVelocityX(0);
-      for (const r of this.remotes.values()) r.update(delta);
-      for (const m of this.monsters.values()) m.update(delta);
+      this.entities.updateAll(delta);
       return;
     }
 
@@ -660,8 +572,7 @@ export class GameScene extends Phaser.Scene {
     this.handleSkills(time);
     this.handlePortalOrJump();
 
-    for (const r of this.remotes.values()) r.update(delta);
-    for (const m of this.monsters.values()) m.update(delta);
+    this.entities.updateAll(delta);
 
     this.sendNetworkUpdates(time);
   }
@@ -732,8 +643,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 매 프레임 가까운 NPC 의 「F: 대화」 힌트 표시.
-    const near = this.nearestNpc();
-    for (const n of this.npcs.values()) n.setNearby(n === near);
+    this.entities.updateNpcHints(this.nearestNpc());
   }
 
   private closeShop(): void {
@@ -781,10 +691,10 @@ export class GameScene extends Phaser.Scene {
   /** 주기적 MOVE 패킷 + 근접 드롭 자동 픽업 요청. */
   private sendNetworkUpdates(time: number): void {
     // 자동 픽업: 가까운 드롭 아이템이 있을 때 200ms 간격으로 서버에 요청
-    if (time - this.lastPickupAttemptAt >= 200 && this.droppedItems.size > 0) {
+    if (time - this.lastPickupAttemptAt >= 200 && this.entities.droppedItemCount() > 0) {
       const px = this.player.x;
       const py = this.player.y;
-      for (const it of this.droppedItems.values()) {
+      for (const it of this.entities.droppedItemValues()) {
         const dx = it.body.x - px;
         const dy = it.body.y - py;
         if (Math.abs(dx) <= 36 && Math.abs(dy) <= 36) {
@@ -827,9 +737,10 @@ export class GameScene extends Phaser.Scene {
   private onPlayerLevelUp(p: Packet): void {
     const level = p.level as number;
     const id = p.playerId as number;
-    const x = id === this.myId ? this.player.x : this.remotes.get(id)?.sprite.x ?? this.player.x;
-    const y = id === this.myId ? this.player.y : this.remotes.get(id)?.sprite.y ?? this.player.y;
-    this.effects.spawnLevelUp(x, y, level);
+    const pos = id === this.myId
+      ? { x: this.player.x, y: this.player.y }
+      : this.entities.remotePosition(id) ?? { x: this.player.x, y: this.player.y };
+    this.effects.spawnLevelUp(pos.x, pos.y, level);
   }
 
   private onChat(p: Packet): void {
