@@ -8,6 +8,15 @@ export type Packet = { type: string } & Record<string, unknown>;
 export type PacketHandler = (packet: Packet) => void;
 type CloseHandler = (event: CloseEvent) => void;
 
+/**
+ * 송수신 패킷을 관찰하기 위한 옵저버. 디버그 빌드의 PacketLogger 가 구현하지만,
+ * 본 인터페이스를 통해 WebSocketClient 가 디버그 모듈에 직접 의존하지 않는다.
+ */
+export interface PacketObserver {
+  recordSend(packet: Packet): void;
+  recordRecv(packet: Packet): void;
+}
+
 export class WebSocketClient {
   private socket: WebSocket | null = null;
   private readonly handlers = new Map<string, PacketHandler>();
@@ -17,8 +26,14 @@ export class WebSocketClient {
    * 시도 종료(open or error/close) 후 null 로 비워 다음 시도가 새 소켓을 만들 수 있게 함.
    */
   private pendingOpen: Promise<void> | null = null;
+  private observer: PacketObserver | null = null;
 
   constructor(private readonly url: string) {}
+
+  /** 옵저버 등록(중복 호출 시 마지막 옵저버로 교체). 디버그 모드에서만 사용. */
+  setObserver(observer: PacketObserver | null): void {
+    this.observer = observer;
+  }
 
   /**
    * 현재 연결되지 않은 경우에만 새로 연결을 시도하고, OPEN 이 될 때까지 기다린다.
@@ -54,6 +69,8 @@ export class WebSocketClient {
     ws.addEventListener('message', (event) => {
       try {
         const packet = JSON.parse(event.data as string) as Packet;
+        // 핸들러가 패킷을 소비하기 전에 기록 — 핸들러 안에서 예외가 나도 로그는 남는다.
+        this.observer?.recordRecv(packet);
         const handler = this.handlers.get(packet.type);
         if (handler) {
           handler(packet);
@@ -94,6 +111,8 @@ export class WebSocketClient {
       return;
     }
     this.socket.send(JSON.stringify(packet));
+    // 실제 전송 성공 직후에만 기록 — readyState 가드를 통과한 패킷만 옵저버에 노출.
+    this.observer?.recordSend(packet);
   }
 
   get isOpen(): boolean {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { showLogin } from './auth/LoginScreen';
 import { SERVER_URL } from './config';
+import { isPacketDebugEnabled, PacketLogger } from './debug/PacketLogger';
 import { GameScene } from './scenes/GameScene';
 import { WebSocketClient } from './network/WebSocketClient';
 
@@ -13,6 +14,15 @@ import { WebSocketClient } from './network/WebSocketClient';
  */
 async function bootstrap(): Promise<void> {
   const network = new WebSocketClient(SERVER_URL);
+
+  // 디버그 옵션: ?debug=ws 가 있을 때만 WS 트래픽 패널을 우하단에 띄운다.
+  // 평소에는 0 비용 — 옵저버 자체가 부착되지 않는다.
+  if (isPacketDebugEnabled()) {
+    const logger = new PacketLogger();
+    logger.install();
+    network.setObserver(logger);
+    console.info('[Debug] WS 패킷 로거 활성화 (?debug=ws)');
+  }
 
   const session = await showLogin(network);
 
