@@ -5,13 +5,17 @@
  * {@link WebSocketClient} 가 송수신하는 모든 패킷을 두 가지 채널로 노출한다:
  *
  * <ol>
- *   <li>우하단 오버레이 패널 — 마지막 {@link #BUFFER_SIZE} 개를 새로고침 없이 표시</li>
+ *   <li>우하단 오버레이 패널 — 송수신 기록을 무제한 누적하며 새로고침 없이 표시.
+ *       사용자가 Clear 버튼을 명시적으로 누를 때까지 보존된다.</li>
  *   <li>{@code console.groupCollapsed} — DevTools 에서 풀어 펼쳐 볼 수 있도록 보조</li>
  * </ol>
  *
  * <p>학습 메모: 별도 라이브러리(react-devtools 류) 없이 같은 효과를 직접 짜본다.
  * MOVE 계열은 30Hz 로 흘러 다른 패킷을 묻기 때문에 기본 필터에서 제외하고,
  * 패널 상단의 토글로 다시 노출할 수 있다.
+ *
+ * <p>주의: 무제한 누적이라 장시간 켜두면 DOM 노드와 힙이 선형으로 증가한다.
+ * 디버그 도구이므로 의도된 정책 — 부담 시 Clear 또는 페이지 새로고침으로 비운다.
  */
 
 import type { Packet } from '../network/WebSocketClient';
@@ -33,7 +37,6 @@ const DEFAULT_HIDDEN_TYPES: ReadonlySet<string> = new Set([
   'MONSTER_MOVE'
 ]);
 
-const BUFFER_SIZE = 200;
 const QUERY_KEY = 'debug';
 const QUERY_VALUE = 'ws';
 
@@ -84,8 +87,9 @@ export class PacketLogger {
   }
 
   private append(entry: LogEntry): void {
+    // 무제한 버퍼 — 사용자가 명시적으로 Clear 버튼을 누를 때까지 보존.
+    // 메모리/DOM 부담은 호출자(=디버거)가 직접 관리한다는 정책.
     this.buffer.push(entry);
-    if (this.buffer.length > BUFFER_SIZE) this.buffer.shift();
     // DevTools 보조 출력 — 패널이 닫혀 있어도 콘솔로 흐름 추적 가능.
     // 필터에 걸린 항목은 콘솔에도 찍지 않아 노이즈를 동시에 줄인다.
     if (!this.hiddenTypes.has(entry.type)) {
@@ -219,10 +223,7 @@ export class PacketLogger {
     el.addEventListener('click', () => el.classList.toggle('expanded'));
 
     this.listEl.appendChild(el);
-    // 버퍼와 동일한 윈도우 유지: 가장 오래된 행 제거.
-    while (this.listEl.children.length > BUFFER_SIZE) {
-      this.listEl.removeChild(this.listEl.children[0]);
-    }
+    // DOM 도 무제한으로 누적 — 버퍼와 정합성 유지. Clear 로만 비운다.
     // 새 행이 보이도록 자동 스크롤 — 단, 사용자가 위로 스크롤 중이면 방해하지 않는다.
     const nearBottom =
       this.listEl.scrollTop + this.listEl.clientHeight >= this.listEl.scrollHeight - 40;
